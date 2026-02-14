@@ -198,46 +198,46 @@ def main_app():
                 progress_bar = st.progress(0)
                 status_text = st.empty()
                 
-                # Temporary file to store the combined audio
-                final_mp3 = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-                
                 try:
                     # Use a subset of data
                     target_df = df.head(limit)
                     
-                    with open(final_mp3.name, 'wb') as outfile:
-                        for i, (index, row) in enumerate(target_df.iterrows()):
-                            status_text.text(f"Generating audio for: {row['phrase']} ({i+1}/{limit})")
-                            
-                            # 1. English x 2
-                            tts_en = gTTS(text=str(row['phrase']), lang='en')
-                            t_en = tempfile.NamedTemporaryFile(suffix=".mp3")
-                            tts_en.save(t_en.name)
-                            
-                            # Write En twice
-                            with open(t_en.name, 'rb') as f:
-                                en_data = f.read()
-                                outfile.write(en_data) # 1st
-                                outfile.write(en_data) # 2nd
-                            
-                            t_en.close()
-                            
-                            # 2. Japanese x 1
-                            # Handle cases where meaning might be empty
-                            meaning_text = str(row['meaning']) if row['meaning'] else "意味なし"
-                            tts_ja = gTTS(text=meaning_text, lang='ja')
-                            t_ja = tempfile.NamedTemporaryFile(suffix=".mp3")
-                            tts_ja.save(t_ja.name)
-                            
-                            with open(t_ja.name, 'rb') as f:
-                                outfile.write(f.read())
-                            
-                            t_ja.close()
-                            
-                            progress_bar.progress((i + 1) / limit)
+                    # Collect all audio data in memory
+                    audio_data = b''
+                    
+                    for i, (index, row) in enumerate(target_df.iterrows()):
+                        status_text.text(f"Generating audio for: {row['phrase']} ({i+1}/{limit})")
+                        
+                        # 1. English x 2
+                        tts_en = gTTS(text=str(row['phrase']), lang='en')
+                        t_en = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
+                        tts_en.save(t_en.name)
+                        
+                        # Read En data
+                        with open(t_en.name, 'rb') as f:
+                            en_data = f.read()
+                            audio_data += en_data  # 1st
+                            audio_data += en_data  # 2nd
+                        
+                        os.unlink(t_en.name)  # Clean up
+                        
+                        # 2. Japanese x 1
+                        meaning_text = str(row['meaning']) if row['meaning'] else "意味なし"
+                        tts_ja = gTTS(text=meaning_text, lang='ja')
+                        t_ja = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
+                        tts_ja.save(t_ja.name)
+                        
+                        with open(t_ja.name, 'rb') as f:
+                            audio_data += f.read()
+                        
+                        os.unlink(t_ja.name)  # Clean up
+                        
+                        progress_bar.progress((i + 1) / limit)
                     
                     status_text.text("Generation Complete!")
-                    st.audio(final_mp3.name, format="audio/mp3")
+                    
+                    # Use st.audio with bytes directly (better mobile support)
+                    st.audio(audio_data, format="audio/mp3")
                     st.info("↑ 上のプレイヤーの再生ボタンを押してください。")
                     
                 except Exception as e:
