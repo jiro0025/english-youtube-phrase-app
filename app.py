@@ -6,6 +6,7 @@ from gtts import gTTS
 import os
 import tempfile
 import time
+import re
 
 # Initialize DB
 db.init_db()
@@ -134,6 +135,16 @@ def main_app():
                     # Rename columns for the DB function
                     import_df = df.rename(columns={phrase_col: 'phrase', meaning_col: 'meaning'})
                     
+                    # Clean up: Remove reference numbers like [1], [1, 3], etc.
+                    def clean_text(text):
+                        if pd.isna(text):
+                            return text
+                        # Remove patterns like [1], [1, 3], [10, 20], etc.
+                        return re.sub(r'\s*\[\d+(?:,\s*\d+)*\]\s*', '', str(text)).strip()
+                    
+                    import_df['phrase'] = import_df['phrase'].apply(clean_text)
+                    import_df['meaning'] = import_df['meaning'].apply(clean_text)
+                    
                     # Optional: clear existing data
                     if st.checkbox("Delete existing data before import?"):
                         db.clear_all_phrases(user_id)
@@ -206,10 +217,12 @@ def main_app():
                     audio_data = b''
                     
                     for i, (index, row) in enumerate(target_df.iterrows()):
-                        status_text.text(f"Generating audio for: {row['phrase']} ({i+1}/{limit})")
+                        # Clean up phrase: remove reference numbers like [1], [1, 3]
+                        phrase_text = re.sub(r'\s*\[\d+(?:,\s*\d+)*\]\s*', '', str(row['phrase'])).strip()
+                        status_text.text(f"Generating audio for: {phrase_text} ({i+1}/{limit})")
                         
                         # 1. English x 2
-                        tts_en = gTTS(text=str(row['phrase']), lang='en')
+                        tts_en = gTTS(text=phrase_text, lang='en')
                         t_en = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
                         tts_en.save(t_en.name)
                         
@@ -222,7 +235,9 @@ def main_app():
                         os.unlink(t_en.name)  # Clean up
                         
                         # 2. Japanese x 1
-                        meaning_text = str(row['meaning']) if row['meaning'] else "意味なし"
+                        meaning_raw = str(row['meaning']) if row['meaning'] else "意味なし"
+                        # Clean up meaning: remove reference numbers
+                        meaning_text = re.sub(r'\s*\[\d+(?:,\s*\d+)*\]\s*', '', meaning_raw).strip()
                         tts_ja = gTTS(text=meaning_text, lang='ja')
                         t_ja = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
                         tts_ja.save(t_ja.name)
