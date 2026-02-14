@@ -236,8 +236,19 @@ def main_app():
                     
                     status_text.text("Generation Complete!")
                     
-                    # Use st.audio with bytes directly (better mobile support)
-                    st.audio(audio_data, format="audio/mp3")
+                    # Use HTML audio tag with base64 for iOS compatibility
+                    import base64
+                    audio_base64 = base64.b64encode(audio_data).decode('utf-8')
+                    
+                    audio_html = f'''
+                    <div style="margin: 20px 0;">
+                        <audio controls style="width: 100%;">
+                            <source src="data:audio/mp3;base64,{audio_base64}" type="audio/mp3">
+                            お使いのブラウザは音声再生に対応していません。
+                        </audio>
+                    </div>
+                    '''
+                    st.markdown(audio_html, unsafe_allow_html=True)
                     st.info("↑ 上のプレイヤーの再生ボタンを押してください。")
                     
                 except Exception as e:
