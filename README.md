@@ -171,6 +171,72 @@ NotebookLM (https://notebooklm.google.com/) にYouTube URLを追加した後、�
 
 ---
 
+## 📁 ディレクトリ構造
+
+```
+english_youtube_phrase_manage_app/
+├── .git/                   # Gitリポジトリ
+├── .gitignore             # Git除外設定
+├── .venv/                 # 仮想環境（ローカル開発用）
+├── README.md              # このファイル
+├── requirements.txt       # 依存パッケージ
+├── app.py                 # メインアプリケーション
+├── database.py            # データベース操作
+├── docs/                  # ドキュメント
+│   └── REQUIREMENTS.md    # 要件定義書
+├── examples/              # サンプルデータ
+│   └── sample_phrases.csv # CSVインポート例
+├── scripts/               # ユーティリティスクリプト
+│   └── migrate_db.py      # データベース移行ツール
+└── phrases.db             # SQLiteデータベース（自動生成）
+```
+
+---
+
+## 💻 ローカル開発
+
+### 前提条件
+- Python 3.9以上
+- pip
+
+### セットアップ手順
+
+1. **リポジトリをクローン**
+   ```bash
+   git clone https://github.com/jiro0025/english-youtube-phrase-app.git
+   cd english-youtube-phrase-app
+   ```
+
+2. **仮想環境を作成・有効化**
+   ```bash
+   python3 -m venv .venv
+   source .venv/bin/activate  # macOS/Linux
+   # または
+   .venv\Scripts\activate     # Windows
+   ```
+
+3. **依存パッケージをインストール**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. **アプリを起動**
+   ```bash
+   streamlit run app.py
+   ```
+
+5. **ブラウザでアクセス**
+   - 自動的に `http://localhost:8501` が開きます
+
+### サンプルデータのインポート
+
+`examples/` フォルダにサンプルCSVファイルがあります：
+1. アプリで「Data Import」を選択
+2. `examples/sample_phrases.csv` をアップロード
+3. カラムをマッピングしてインポート
+
+---
+
 ## 🔒 プライバシーとセキュリティ
 
 - ✅ パスワードはSHA-256でハッシュ化して保存
@@ -208,4 +274,17 @@ NotebookLM (https://notebooklm.google.com/) にYouTube URLを追加した後、�
 
 ---
 
+## 📝 ライセンス
+
+このプロジェクトは個人利用を目的としています。
+
+---
+
+## 🤝 貢献
+
+バグ報告や機能リクエストは、GitHubのIssuesでお願いします。
+
+---
+
 **Enjoy learning English! 🚀**
+
