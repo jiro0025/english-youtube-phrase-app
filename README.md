@@ -1,11 +1,9 @@
 # English Phrase Manager 📖
 
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://jiro0025-english-youtube-phrase-app-app.streamlit.app/)
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://english-youtube-phrase-app-xrwquehi2b77zhqzkzgres.streamlit.app/)
 
 YouTubeで学んだ英語フレーズを管理・復習するためのWebアプリケーション。
 音声再生機能により、効率的な学習をサポートします。
-
-🔗 **[▶ Live Demo を試す](https://jiro0025-english-youtube-phrase-app-app.streamlit.app/)**
 
 ---
 
