@@ -8,8 +8,6 @@ import tempfile
 import time
 import re
 
-# Initialize DB
-db.init_db()
 
 #%%
 st.set_page_config(page_title="My English Phrases", page_icon="📖")
