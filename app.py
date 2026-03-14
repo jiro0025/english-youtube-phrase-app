@@ -9,8 +9,158 @@ import time
 import re
 
 
+
 #%%
-st.set_page_config(page_title="My English Phrases", page_icon="📖")
+st.set_page_config(page_title="My English Phrases", page_icon="📖", layout="centered")
+
+def load_css():
+    st.markdown("""
+        <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap');
+        
+        /* 全体フォントの適用 */
+        html, body, [class*="css"], .stMarkdown, .stTextInput, button {
+            font-family: 'Outfit', sans-serif !important;
+        }
+
+        /* アプリタイトルのグラデーションとシャドウ */
+        h1 {
+            background: linear-gradient(135deg, #6366F1 0%, #A855F7 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-weight: 700 !important;
+            letter-spacing: -0.025em;
+            margin-bottom: 1.5rem;
+        }
+
+        h2, h3 {
+            font-weight: 600 !important;
+            color: #1E293B;
+            letter-spacing: -0.025em;
+        }
+
+        /* プライマリボタンのモダン化 */
+        button[kind="primary"] {
+            background: linear-gradient(135deg, #6366F1 0%, #4F46E5 100%) !important;
+            color: white !important;
+            border: none !important;
+            border-radius: 12px !important;
+            font-weight: 600 !important;
+            padding: 0.5rem 1.5rem !important;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+            box-shadow: 0 4px 6px -1px rgba(99, 102, 241, 0.3), 0 2px 4px -1px rgba(99, 102, 241, 0.2) !important;
+        }
+
+        button[kind="primary"]:hover {
+            transform: translateY(-2px) !important;
+            box-shadow: 0 10px 15px -3px rgba(99, 102, 241, 0.4), 0 4px 6px -2px rgba(99, 102, 241, 0.2) !important;
+        }
+        
+        /* セカンダリボタンのモダン化 */
+        button[kind="secondary"] {
+            border-radius: 12px !important;
+            font-weight: 500 !important;
+            border: 1px solid #E2E8F0 !important;
+            color: #475569 !important;
+            background-color: transparent !important;
+            transition: all 0.2s ease-in-out !important;
+        }
+        
+        button[kind="secondary"]:hover {
+            border-color: #6366F1 !important;
+            color: #6366F1 !important;
+            background-color: rgba(99, 102, 241, 0.05) !important;
+        }
+
+        /* 入力フォームの角丸・洗練化 */
+        .stTextInput > div > div > input,
+        .stNumberInput > div > div > input {
+            border-radius: 10px !important;
+            border: 1px solid #E2E8F0 !important;
+            transition: border-color 0.2s, box-shadow 0.2s !important;
+            font-family: inherit !important;
+        }
+
+        .stTextInput > div > div > input:focus,
+        .stNumberInput > div > div > input:focus {
+            border-color: #6366F1 !important;
+            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2) !important;
+        }
+
+        /* コンテナ（st.container(border=True)）のホバーエフェクト */
+        [data-testid="stVerticalBlockBorderWrapper"] {
+            border-radius: 16px !important;
+            border: 1px solid #E2E8F0 !important;
+            transition: all 0.3s ease !important;
+            background: rgba(255, 255, 255, 0.5) !important;
+            backdrop-filter: blur(10px);
+        }
+
+        [data-testid="stVerticalBlockBorderWrapper"]:hover {
+            border-color: #A5B4FC !important;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.025) !important;
+            transform: translateY(-2px);
+        }
+
+        /* タブデザインの洗練 */
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 2rem;
+            border-bottom: 2px solid #E2E8F0;
+        }
+        
+        .stTabs [data-baseweb="tab"] {
+            font-weight: 500;
+            color: #64748B;
+            padding: 10px 0;
+            border-bottom: 2px solid transparent !important;
+            transition: all 0.2s ease;
+        }
+        
+        .stTabs [aria-selected="true"] {
+            color: #6366F1 !important;
+            border-bottom-color: #6366F1 !important;
+        }
+        
+        /* 成功/エラーメッセージの角丸 */
+        [data-testid="stAlert"] {
+            border-radius: 12px !important;
+            border: none !important;
+            font-weight: 500;
+        }
+
+        /* プログレスバー */
+        .stProgress > div > div > div > div {
+            background-color: #6366F1 !important;
+            border-radius: 10px !important;
+        }
+        
+        /* ダークモード時の微調整 */
+        @media (prefers-color-scheme: dark) {
+            [data-testid="stVerticalBlockBorderWrapper"] {
+                background: rgba(30, 41, 59, 0.5) !important;
+                border-color: #475569 !important;
+            }
+            [data-testid="stVerticalBlockBorderWrapper"]:hover {
+                border-color: #6366F1 !important;
+            }
+            h2, h3 {
+                color: #F8FAFC;
+            }
+            button[kind="secondary"] {
+                border-color: #475569 !important;
+                color: #CBD5E1 !important;
+            }
+            .stTextInput > div > div > input {
+                border-color: #475569 !important;
+                background-color: #1E293B !important;
+                color: #F8FAFC !important;
+            }
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+load_css()
+
 
 #%%
 # Session state initialization
@@ -34,7 +184,7 @@ def login_page():
         with st.form("login_form"):
             username = st.text_input("ユーザー名")
             password = st.text_input("パスワード", type="password")
-            submit = st.form_submit_button("ログイン")
+            submit = st.form_submit_button("ログイン", type="primary")
             
             if submit:
                 if username and password:
@@ -56,7 +206,7 @@ def login_page():
             new_username = st.text_input("ユーザー名（半角英数字）")
             new_password = st.text_input("パスワード", type="password")
             confirm_password = st.text_input("パスワード（確認）", type="password")
-            submit_signup = st.form_submit_button("アカウント作成")
+            submit_signup = st.form_submit_button("アカウント作成", type="primary")
             
             if submit_signup:
                 if new_username and new_password and confirm_password:
@@ -103,7 +253,7 @@ def main_app():
             url = st.text_input("YouTube URL", placeholder="https://youtu.be/...")
             timestamp = st.number_input("Timestamp (seconds)", min_value=0, step=1)
             
-            submitted = st.form_submit_button("Add Phrase")
+            submitted = st.form_submit_button("Add Phrase", type="primary")
             if submitted:
                 if phrase:
                     db.add_phrase(user_id, phrase, meaning, url, timestamp)
@@ -129,7 +279,7 @@ def main_app():
                 phrase_col = st.selectbox("Select 'English Phrase' column", cols, index=1 if len(cols) > 1 else 0)
                 meaning_col = st.selectbox("Select 'Japanese Meaning' column", cols, index=2 if len(cols) > 2 else 0)
                 
-                if st.button("Import Data"):
+                if st.button("Import Data", type="primary"):
                     # Rename columns for the DB function
                     import_df = df.rename(columns={phrase_col: 'phrase', meaning_col: 'meaning'})
                     
@@ -164,7 +314,7 @@ def main_app():
         else:
             # Display as cards
             for index, row in df.iterrows():
-                with st.container():
+                with st.container(border=True):
                     col1, col2 = st.columns([3, 1])
                     with col1:
                         st.subheader(row['phrase'])
@@ -203,7 +353,7 @@ def main_app():
             else:
                 limit = 1
             
-            if st.button("ラジオ生成スタート"):
+            if st.button("📻 ラジオ生成スタート", type="primary", use_container_width=True):
                 progress_bar = st.progress(0)
                 status_text = st.empty()
                 
