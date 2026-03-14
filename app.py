@@ -133,6 +133,44 @@ def load_css():
             background-color: #6366F1 !important;
             border-radius: 10px !important;
         }
+
+        /* スマホ向けのレスポンシブ調整 */
+        @media (max-width: 768px) {
+            /* 全体的な文字サイズを小さく */
+            h1 {
+                font-size: 1.7rem !important;
+                margin-bottom: 1.0rem !important;
+            }
+            h2, .st-emotion-cache-10trblm {
+                font-size: 1.4rem !important;
+            }
+            h3 {
+                font-size: 1.2rem !important;
+                padding-bottom: 0.2rem !important;
+            }
+            
+            /* カード（枠線コンテナ）の余白を詰める */
+            [data-testid="stVerticalBlockBorderWrapper"] {
+                padding: 1rem 1rem !important;
+            }
+            
+            /* 要素間の隙間を詰める */
+            [data-testid="stVerticalBlockBorderWrapper"] > div {
+                gap: 0.5rem !important;
+            }
+            
+            /* テキストの余白微調整 */
+            .stMarkdown p {
+                font-size: 0.95rem !important;
+                margin-bottom: 0.2rem !important;
+            }
+            
+            /* ボタンのサイズと余白調整 */
+            button {
+                width: 100% !important; /* スマホではボタンを押しやすく幅いっぱいに */
+                padding: 0.4rem 1rem !important;
+            }
+        }
         
         /* ダークモード時の微調整 */
         @media (prefers-color-scheme: dark) {
@@ -330,8 +368,7 @@ def main_app():
                                     url += f"?t={row['timestamp']}"
                             st.markdown(f"[Watch Video]({url})", unsafe_allow_html=True)
                     with col2:
-                        st.write("") # Spacer
-                        if st.button("✅ Learned", key=f"learn_{row['id']}"):
+                        if st.button("✅ Learned", key=f"learn_{row['id']}", use_container_width=True):
                             db.mark_as_learned(row['id'], user_id)
                             st.balloons()
                             st.rerun()
