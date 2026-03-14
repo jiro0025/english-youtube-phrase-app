@@ -372,8 +372,6 @@ def main_app():
                             db.mark_as_learned(row['id'], user_id)
                             st.balloons()
                             st.rerun()
-                    st.divider()
-    
     #%%
     elif choice == "Radio Mode":
         st.header("Radio Mode 📻")
