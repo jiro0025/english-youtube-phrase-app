@@ -1,305 +1,73 @@
-# English Phrase Manager 📖
+# React + TypeScript + Vite
 
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://english-youtube-phrase-app-xrwquehi2b77zhqzkzgres.streamlit.app/)
+This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
-YouTubeで学んだ英語フレーズを管理・復習するためのWebアプリケーション。
-音声再生機能により、効率的な学習をサポートします。
+Currently, two official plugins are available:
 
----
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
 
-## 🌟 主な機能
+## React Compiler
 
-- ✅ **ユーザー認証**: 個人のデータを安全に管理
-- ✅ **フレーズ管理**: 英語フレーズと日本語の意味を登録
-- ✅ **YouTube連携**: 動画URLとタイムスタンプを保存
-- ✅ **CSV一括インポート**: 大量のフレーズを一度に登録
-- ✅ **レビューモード**: 未学習フレーズのみを表示
-- ✅ **ラジオモード**: 音声で連続再生（英語×2 → 日本語×1）
-- ✅ **学習進捗管理**: 学習済みフレーズを自動で除外
-- ✅ **マルチデバイス対応**: PC・スマートフォンで利用可能
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
 
----
+## Expanding the ESLint configuration
 
-## 🚀 クイックスタート
+If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
 
-### 1. アカウント作成
+```js
+export default defineConfig([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{ts,tsx}'],
+    extends: [
+      // Other configs...
 
-初回利用時は「新規登録」タブからアカウントを作成します。
+      // Remove tseslint.configs.recommended and replace with this
+      tseslint.configs.recommendedTypeChecked,
+      // Alternatively, use this for stricter rules
+      tseslint.configs.strictTypeChecked,
+      // Optionally, add this for stylistic rules
+      tseslint.configs.stylisticTypeChecked,
 
-- **ユーザー名**: 半角英数字（一意である必要があります）
-- **パスワード**: 4文字以上
-
-### 2. フレーズを準備する
-
-#### 推奨方法: NotebookLMを使う
-
-1. **YouTubeのURLをNotebookLMに入力**
-   - NotebookLM: https://notebooklm.google.com/
-   - YouTube動画のURLを貼り付け
-
-2. **フレーズリストを生成**
-   - NotebookLMに以下のようなプロンプトを入力：
-   ```
-   この動画から使える英語フレーズを抽出して、
-   以下の形式のテーブルで出力してください：
-   
-   | No | phrase | meaning |
-   |---|---|---|
-   | 1 | piece of cake | 朝飯前 |
-   | 2 | break the ice | 緊張をほぐす |
-   ```
-
-3. **CSVファイルとして保存**
-   - 生成されたテーブルをコピー
-   - Excelやスプレッドシートに貼り付け
-   - CSV形式で保存
-
-### 3. CSVをインポート
-
-1. アプリの「Data Import」を選択
-2. CSVファイルをアップロード
-3. カラムをマッピング：
-   - 「phrase」→ 英語フレーズの列を選択
-   - 「meaning」→ 日本語の意味の列を選択
-4. 「Import Data」をクリック
-
----
-
-## 📋 CSVファイルのフォーマット
-
-### 実際のフォーマット例
-
-```csv
-番号,英文 (English Sentence),日本語文 (Japanese Translation)
-1,The factory turns out 800 motorcycles a month.,その工場は月に800台のオートバイを生産しています。
-2,Would you please turn down the TV a little?,テレビの音を少し下げていただけますか？
-3,It is impossible for me to finish the work in a day.,私がその仕事を一日で終えるのは不可能です。
+      // Other configs...
+    ],
+    languageOptions: {
+      parserOptions: {
+        project: ['./tsconfig.node.json', './tsconfig.app.json'],
+        tsconfigRootDir: import.meta.dirname,
+      },
+      // other options...
+    },
+  },
+])
 ```
 
-### NotebookLMでのフレーズ抽出プロンプト
+You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
 
-NotebookLM (https://notebooklm.google.com/) にYouTube URLを追加した後、以下のプロンプトを使用してください：
+```js
+// eslint.config.js
+import reactX from 'eslint-plugin-react-x'
+import reactDom from 'eslint-plugin-react-dom'
 
+export default defineConfig([
+  globalIgnores(['dist']),
+  {
+    files: ['**/*.{ts,tsx}'],
+    extends: [
+      // Other configs...
+      // Enable lint rules for React
+      reactX.configs['recommended-typescript'],
+      // Enable lint rules for React DOM
+      reactDom.configs.recommended,
+    ],
+    languageOptions: {
+      parserOptions: {
+        project: ['./tsconfig.node.json', './tsconfig.app.json'],
+        tsconfigRootDir: import.meta.dirname,
+      },
+      // other options...
+    },
+  },
+])
 ```
-この動画から使える英語フレーズを抽出して、
-以下の形式のCSVテーブルで出力してください：
-
-番号,英文 (English Sentence),日本語文 (Japanese Translation)
-1,piece of cake,朝飯前
-2,break the ice,緊張をほぐす
-
-条件:
-- 実用的な英語フレーズを20〜50個抽出
-- 各フレーズに自然な日本語訳を付ける
-- 番号は1から連番で振る
-- CSVとしてコピー可能な形式で出力
-```
-
-**ヒント**: 
-- 動画の長さに応じて抽出数を調整してください
-- 特定のトピック（ビジネス英語、日常会話など）を指定するとより良い結果が得られます
-
-### カラムマッピング
-
-アプリでCSVをインポートする際、以下のようにマッピングしてください：
-
-| CSVのカラム名 | アプリの項目 |
-|-------------|-----------|
-| `英文 (English Sentence)` | **phrase** (必須) |
-| `日本語文 (Japanese Translation)` | **meaning** (必須) |
-| `番号` | インポート不要（自動で無視されます） |
-
----
-
-## 📚 使い方ガイド
-
-### レビューモード
-
-1. サイドバーから「Review Mode」を選択
-2. 未学習フレーズがカード形式で表示されます
-3. フレーズを確認して、覚えたら「✅ Learned」ボタンをクリック
-4. 学習済みフレーズは次回から表示されません
-
-### ラジオモード（音声学習）
-
-1. サイドバーから「Radio Mode」を選択
-2. 再生件数をスライダーで選択（デフォルト: 10件）
-3. 「ラジオ生成スタート」をクリック
-4. 音声が自動生成されます：
-   - **英語フレーズ × 2回**
-   - **日本語の意味 × 1回**
-   - この順序で連続再生
-5. 生成完了後、プレイヤーで再生
-
-**ヒント**: 
-- 通勤・通学中に聞くのがおすすめ
-- iPhoneでも再生可能
-
-### データ管理
-
-**学習進捗をリセット**
-- 「Manage Data」→「Reset Progress」
-- 全フレーズが「未学習」状態に戻ります
-
-**学習済みフレーズを削除**
-- 「Manage Data」→「Delete Learned Phrases」
-- 学習完了したフレーズのみを削除できます
-
-**全データ削除**
-- 「Manage Data」→「Delete ALL Phrases」
-- チェックボックスで確認後、全削除
-
----
-
-## 🎯 学習の流れ（推奨）
-
-1. **YouTube動画を見る**
-2. **NotebookLMでフレーズを抽出**
-3. **CSVでインポート**
-4. **レビューモードで確認**
-5. **ラジオモードで復習**
-6. **学習済みマークを付ける**
-7. **定期的に復習**
-
----
-
-## 🛠️ 技術スタック
-
-| カテゴリ | 技術 |
-|---------|------|
-| フロントエンド | Streamlit |
-| バックエンド | Python 3.9 |
-| データベース | Supabase (PostgreSQL) |
-| 音声生成 | Google Text-to-Speech (gTTS) |
-| デプロイ | Streamlit Community Cloud |
-| 認証 | カスタム認証（SHA-256ハッシュ） |
-
----
-
-## 📁 ディレクトリ構造
-
-```
-english_youtube_phrase_manage_app/
-├── .streamlit/
-│   └── secrets.toml.example  # Secrets設定テンプレート
-├── .gitignore             # Git除外設定（secrets.tomlを除外）
-├── README.md              # このファイル
-├── requirements.txt       # 依存パッケージ
-├── app.py                 # メインアプリケーション
-├── database.py            # Supabaseデータベース操作
-├── docs/                  # ドキュメント
-│   └── REQUIREMENTS.md    # 要件定義書
-├── examples/              # サンプルデータ
-│   └── sample_phrases.csv # CSVインポート例
-└── scripts/               # ユーティリティスクリプト
-    └── clean_csv.py       # CSVクリーニングツール
-```
-
----
-
-## 💻 ローカル開発
-
-### 前提条件
-- Python 3.9以上
-- pip
-
-### セットアップ手順
-
-1. **リポジトリをクローン**
-   ```bash
-   git clone https://github.com/jiro0025/english-youtube-phrase-app.git
-   cd english-youtube-phrase-app
-   ```
-
-2. **仮想環境を作成・有効化**
-   ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate  # macOS/Linux
-   # または
-   .venv\Scripts\activate     # Windows
-   ```
-
-3. **依存パッケージをインストール**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **Supabase Secretsを設定**
-   ```bash
-   cp .streamlit/secrets.toml.example .streamlit/secrets.toml
-   # .streamlit/secrets.toml を編集してSupabaseのURLとkeyを入力
-   ```
-
-5. **アプリを起動**
-   ```bash
-   streamlit run app.py
-   ```
-
-5. **ブラウザでアクセス**
-   - 自動的に `http://localhost:8501` が開きます
-
-### サンプルデータのインポート
-
-`examples/` フォルダにサンプルCSVファイルがあります：
-1. アプリで「Data Import」を選択
-2. `examples/sample_phrases.csv` をアップロード
-3. カラムをマッピングしてインポート
-
----
-
-## 🔒 プライバシーとセキュリティ
-
-- ✅ パスワードはSHA-256でハッシュ化して保存
-- ✅ ユーザーごとにデータを完全分離
-- ✅ 他のユーザーのデータは一切閲覧不可
-- ✅ SQLインジェクション対策済み
-
----
-
-## 📧 共有方法
-
-このアプリを他の人と共有したい場合：
-
-1. Streamlit Cloudのアプリ画面で「Share」ボタンをクリック
-2. 表示されたURLをコピー
-3. LINEやメールで送信
-
-**受け取った人は**:
-- URLにアクセス
-- 新規アカウントを作成
-- すぐに使える！
-
-各ユーザーのデータは完全に分離されているので、安心して共有できます。
-
----
-
-## 🎉 更新履歴
-
-### v1.1.0 (2026-03-11)
-- データベースをSQLite → Supabase (PostgreSQL) に移行
-- Streamlit Cloudでのデータ永続化を実現
-- 多ユーザー対応の強化
-
-### v1.0.0 (2026-02-14)
-- 初回リリース
-- ユーザー認証機能
-- フレーズ管理機能
-- ラジオモード（音声再生）
-- iOS対応
-
----
-
-## 📝 ライセンス
-
-このプロジェクトは個人利用を目的としています。
-
----
-
-## 🤝 貢献
-
-バグ報告や機能リクエストは、GitHubのIssuesでお願いします。
-
----
-
-**Enjoy learning English! 🚀**
-

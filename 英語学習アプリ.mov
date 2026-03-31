@@ -1,0 +1,133 @@
+# SQLite → Supabase バックエンド移行計画
+
+Streamlit Cloudにデプロイ済みの英語フレーズ管理アプリのデータバックエンドを、ローカルSQLiteからSupabase（PostgreSQL）に移行する。これにより、アプリ再起動時のデータ消失を防ぎ、公開アプリとして多数のユーザーにも対応可能になる。
+
+## User Review Required
+
+> [!IMPORTANT]
+> ### Supabase側のセットアップが必要です（すべて無料）
+> コード変更の前に、以下の作業が必要です：
+> 1. [Supabase](https://supabase.com/) でアカウント作成（GitHub連携で簡単）
+> 2. 新規プロジェクト作成
+> 3. SQLエディタでテーブル作成（下記のSQLを実行）
+> 4. Project Settings → API から **URL** と **anon key** をコピー
+>
+> これらの手順は実装完了後に詳しいガイドもお渡しします。
+
+### Supabaseで実行するSQL
+
+```sql
+-- users テーブル
+CREATE TABLE users (
+    id BIGSERIAL PRIMARY KEY,
+    username TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- phrases テーブル
+CREATE TABLE phrases (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id),
+    phrase TEXT NOT NULL,
+    meaning TEXT,
+    youtube_url TEXT DEFAULT '',
+    timestamp INTEGER DEFAULT 0,
+    is_learned BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- インデックス（パフォーマンス向上）
+CREATE INDEX idx_phrases_user_id ON phrases(user_id);
+CREATE INDEX idx_phrases_user_learned ON phrases(user_id, is_learned);
+```
+
+## Proposed Changes
+
+### データベースモジュール
+
+#### [MODIFY] [database.py](file:///Users/user/Documents/development/tool_app/english_youtube_phrase_manage_app/database.py)
+
+`sqlite3` を完全に除去し、`supabase-py` で書き換え。**関数シグネチャは維持**するため [app.py](file:///Users/user/Documents/development/tool_app/english_youtube_phrase_manage_app/app.py) の変更は最小限。
+
+主な変更点：
+- [init_db()](file:///Users/user/Documents/development/tool_app/english_youtube_phrase_manage_app/database.py#9-41) → Supabaseクライアントの初期化 `get_supabase_client()` に置換
+- 全CRUD関数を `supabase.table("テーブル名").select/insert/update/delete()` で実装
+- 接続情報は `st.secrets` から取得（Streamlit Cloud対応）
+
+```python
+# 例: supabase-py の基本パターン
+from supabase import create_client
+import streamlit as st
+
+@st.cache_resource
+def get_supabase_client():
+    return create_client(
+        st.secrets["supabase"]["url"],
+        st.secrets["supabase"]["key"]
+    )
+
+# SELECT
+supabase.table("phrases").select("*").eq("user_id", user_id).eq("is_learned", False).execute()
+
+# INSERT
+supabase.table("phrases").insert({"user_id": 1, "phrase": "hello", "meaning": "こんにちは"}).execute()
+
+# UPDATE
+supabase.table("phrases").update({"is_learned": True}).eq("id", phrase_id).eq("user_id", user_id).execute()
+
+# DELETE
+supabase.table("phrases").delete().eq("user_id", user_id).execute()
+```
+
+---
+
+### アプリケーション
+
+#### [MODIFY] [app.py](file:///Users/user/Documents/development/tool_app/english_youtube_phrase_manage_app/app.py)
+
+- `db.init_db()` の呼び出しを削除（Supabase接続は [database.py](file:///Users/user/Documents/development/tool_app/english_youtube_phrase_manage_app/database.py) 内で管理）
+- データ取得部分で `.data` 属性からDataFrame変換に対応
+- その他のAPIは [database.py](file:///Users/user/Documents/development/tool_app/english_youtube_phrase_manage_app/database.py) が同じ関数シグネチャを維持するため、ほぼ変更なし
+
+---
+
+### 依存関係
+
+#### [MODIFY] [requirements.txt](file:///Users/user/Documents/development/tool_app/english_youtube_phrase_manage_app/requirements.txt)
+
+```diff
+ streamlit==1.50.0
+ pandas==2.3.3
+ gtts==2.5.4
++supabase
+```
+
+---
+
+### Secrets設定
+
+#### [NEW] [secrets.toml.example](file:///Users/user/Documents/development/tool_app/english_youtube_phrase_manage_app/.streamlit/secrets.toml.example)
+
+ユーザーが参考にするテンプレート。実際の `.streamlit/secrets.toml` は [.gitignore](file:///Users/user/Documents/development/tool_app/english_youtube_phrase_manage_app/.gitignore) 済み。
+
+```toml
+# Supabase Project Settings → API から取得
+[supabase]
+url = "https://YOUR_PROJECT_ID.supabase.co"
+key = "YOUR_ANON_KEY"
+```
+
+## Verification Plan
+
+### ローカルテスト
+1. `.streamlit/secrets.toml` にSupabase情報をセット
+2. `streamlit run app.py` でアプリ起動
+3. 新規ユーザー登録 → `users` テーブルに行が追加されるか
+4. ログイン → 認証が成功するか
+5. フレーズ追加 → [phrases](file:///Users/user/Documents/development/tool_app/english_youtube_phrase_manage_app/database.py#102-110) テーブルに行が追加されるか
+6. Learned マーク → `is_learned` が `true` に更新されるか
+7. アプリ再起動後もデータが保持されていることを確認
+
+### Supabaseダッシュボード確認
+- Table Editor でデータがリアルタイムで反映されていることを確認
