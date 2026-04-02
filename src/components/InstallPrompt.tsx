@@ -5,6 +5,10 @@ export default function InstallPrompt() {
   const [isIOS, setIsIOS] = useState(false)
 
   useEffect(() => {
+    // Skip install prompt in Capacitor native app
+    const isCapacitor = (window as unknown as Record<string, unknown>).Capacitor !== undefined
+    if (isCapacitor) return
+
     // Check if already installed as PWA
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches
       || ('standalone' in window.navigator && (window.navigator as unknown as { standalone: boolean }).standalone)
