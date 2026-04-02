@@ -1,8 +1,11 @@
 import { useState } from 'react'
-import { useAuth } from '../hooks/useAuth'
 
-export default function LoginPage() {
-  const { login, signup } = useAuth()
+interface LoginPageProps {
+  login: (u: string, p: string) => Promise<{ success: boolean; message: string }>
+  signup: (u: string, p: string) => Promise<{ success: boolean; message: string }>
+}
+
+export default function LoginPage({ login, signup }: LoginPageProps) {
   const [activeTab, setActiveTab] = useState<'login' | 'signup'>('login')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')

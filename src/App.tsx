@@ -14,7 +14,7 @@ export default function App() {
   const auth = useAuth()
 
   if (!auth.isLoggedIn) {
-    return <LoginPage />
+    return <LoginPage login={auth.login} signup={auth.signup} />
   }
 
   return (
