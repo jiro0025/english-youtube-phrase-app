@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { usePhrases } from '../hooks/usePhrases'
+import { useSpeech } from '../hooks/useSpeech'
 
 interface Props {
   userId: string
@@ -7,6 +8,7 @@ interface Props {
 
 export default function ReviewPage({ userId }: Props) {
   const { phrases, loading, fetchUnlearned, markAsLearned } = usePhrases(userId)
+  const { speak } = useSpeech()
   const [celebrateId, setCelebrateId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -19,6 +21,10 @@ export default function ReviewPage({ userId }: Props) {
       await markAsLearned(id)
       setCelebrateId(null)
     }, 600)
+  }
+
+  const handleSpeak = (text: string) => {
+    speak(text, 'en-US')
   }
 
   const buildYoutubeUrl = (url: string, timestamp: number) => {
@@ -70,7 +76,17 @@ export default function ReviewPage({ userId }: Props) {
                 transform: celebrateId === phrase.id ? 'scale(0.9) translateY(-20px)' : 'none',
               }}
             >
-              <div className="card-phrase">{phrase.phrase}</div>
+              <div className="card-header-actions" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className="card-phrase">{phrase.phrase}</div>
+                <button 
+                  className="icon-btn" 
+                  onClick={() => handleSpeak(phrase.phrase)}
+                  title="発音を聞く"
+                  style={{ fontSize: '1.2rem', padding: '6px' }}
+                >
+                  🔊
+                </button>
+              </div>
               <div className="card-meaning">{phrase.meaning}</div>
               <div className="card-actions">
                 <button

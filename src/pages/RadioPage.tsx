@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { usePhrases } from '../hooks/usePhrases'
 import type { Phrase } from '../hooks/usePhrases'
+import { useSpeech } from '../hooks/useSpeech'
 
 interface Props {
   userId: string
@@ -10,6 +11,7 @@ type PlayState = 'idle' | 'playing' | 'paused'
 
 export default function RadioPage({ userId }: Props) {
   const { phrases, loading, fetchUnlearned } = usePhrases(userId)
+  const { speak } = useSpeech()
   const [limit, setLimit] = useState(10)
   const [playState, setPlayState] = useState<PlayState>('idle')
   const [currentIndex, setCurrentIndex] = useState(0)
@@ -31,31 +33,6 @@ export default function RadioPage({ userId }: Props) {
   const cleanText = (text: string) => {
     return text.replace(/\s*\[\d+(?:,\s*\d+)*\]\s*/g, '').trim()
   }
-
-  const speak = useCallback((text: string, lang: string): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      if (cancelRef.current) {
-        reject(new Error('cancelled'))
-        return
-      }
-
-      const utterance = new SpeechSynthesisUtterance(text)
-      utterance.lang = lang
-      utterance.rate = lang === 'en-US' ? 0.9 : 1.0
-      utterance.pitch = 1.0
-
-      utterance.onend = () => resolve()
-      utterance.onerror = (e) => {
-        if (e.error === 'canceled' || e.error === 'interrupted') {
-          reject(new Error('cancelled'))
-        } else {
-          resolve() // Skip errors and continue
-        }
-      }
-
-      speechSynthesis.speak(utterance)
-    })
-  }, [])
 
   const delay = (ms: number): Promise<void> => {
     return new Promise((resolve, reject) => {
@@ -115,8 +92,9 @@ export default function RadioPage({ userId }: Props) {
         setDisplayMeaning(meaning)
         await speak(meaning, 'ja-JP')
         await delay(1200)
-      } catch {
-        break
+      } catch (e) {
+        if (e instanceof Error && e.message === 'cancelled') break
+        // Continue for other errors
       }
     }
 

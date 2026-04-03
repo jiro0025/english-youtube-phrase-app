@@ -933,3 +933,31 @@ select.form-input {
     padding: 24px;
   }
 }
+
+/* ============================================ */
+/* Icon Buttons                                 */
+/* ============================================ */
+.icon-btn {
+  background: none;
+  border: none;
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-primary);
+  opacity: 0.8;
+}
+
+.icon-btn:hover {
+  background: rgba(124, 92, 252, 0.12);
+  transform: scale(1.1);
+  opacity: 1;
+}
+
+.icon-btn:active {
+  transform: scale(0.95);
+}

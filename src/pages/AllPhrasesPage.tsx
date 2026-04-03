@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { usePhrases } from '../hooks/usePhrases'
+import { useSpeech } from '../hooks/useSpeech'
 
 interface Props {
   userId: string
@@ -7,10 +8,16 @@ interface Props {
 
 export default function AllPhrasesPage({ userId }: Props) {
   const { phrases, loading, fetchAll } = usePhrases(userId)
+  const { speak } = useSpeech()
 
   useEffect(() => {
     fetchAll()
   }, [fetchAll])
+
+  const handleSpeak = (e: React.MouseEvent, text: string) => {
+    e.stopPropagation()
+    speak(text, 'en-US')
+  }
 
   if (loading) {
     return (
@@ -40,6 +47,7 @@ export default function AllPhrasesPage({ userId }: Props) {
             <table className="data-table">
               <thead>
                 <tr>
+                  <th>Audio</th>
                   <th>Phrase</th>
                   <th>Meaning</th>
                   <th>Status</th>
@@ -48,6 +56,15 @@ export default function AllPhrasesPage({ userId }: Props) {
               <tbody>
                 {phrases.map((p) => (
                   <tr key={p.id}>
+                    <td>
+                      <button 
+                        className="icon-btn" 
+                        onClick={(e) => handleSpeak(e, p.phrase)}
+                        title="再生"
+                      >
+                        🔊
+                      </button>
+                    </td>
                     <td style={{ fontWeight: 600 }}>{p.phrase}</td>
                     <td style={{ color: 'var(--text-secondary)' }}>{p.meaning}</td>
                     <td>{p.is_learned ? '✅' : '📖'}</td>
