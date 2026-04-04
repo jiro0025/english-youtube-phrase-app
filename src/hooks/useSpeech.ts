@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 
 // --- IndexedDB Cache Helper ---
-const DB_NAME = 'EnglishAppAudioCache'
+// 無料版でも、何度も同じ通信をしないようにキャッシュは残しておきます。
+const DB_NAME = 'EnglishAppAudioCacheFree'
 const STORE_NAME = 'audio_blobs'
 
 const openDB = (): Promise<IDBDatabase> => {
@@ -34,15 +35,13 @@ const dbSet = async (key: string, blob: Blob): Promise<void> => {
   })
 }
 
-export type SpeechStatus = 'idle' | 'fetching' | 'playing' | 'error' | 'key_missing'
+export type SpeechStatus = 'idle' | 'fetching' | 'playing' | 'error'
 
 export function useSpeech() {
   const [status, setStatus] = useState<SpeechStatus>('idle')
   const [errorDetail, setErrorDetail] = useState<string>('')
   
-  // Single audio instance for consistent authorization on iOS
   const audioInstanceRef = useRef<HTMLAudioElement | null>(null)
-  const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY
 
   useEffect(() => {
     if (!audioInstanceRef.current) {
@@ -58,11 +57,10 @@ export function useSpeech() {
 
   const init = useCallback(() => {
     if (audioInstanceRef.current) {
-      // Authorizing audio context on user gesture
       audioInstanceRef.current.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA'
       audioInstanceRef.current.play().then(() => {
         audioInstanceRef.current?.pause()
-        console.log('Audio Device Initialized')
+        console.log('Free Audio Engine Initialized')
       }).catch(e => {
         console.warn('Audio init failed:', e)
         setErrorDetail('Init Error: ' + e.message)
@@ -70,73 +68,67 @@ export function useSpeech() {
     }
   }, [])
 
-  const fetchAudioBlob = async (text: string, speed: number, lang: string): Promise<Blob | null> => {
-    if (!OPENAI_API_KEY) {
-      setStatus('key_missing')
-      setErrorDetail('VITE_OPENAI_API_KEY is not set in environment.')
-      return null
-    }
-
-    const cacheKey = `tts_${lang}_${speed}_${text}`
+  const fetchAudioBlob = async (text: string, lang: string): Promise<Blob | null> => {
+    const langCode = lang.split('-')[0] // en-US -> en, ja-JP -> ja
+    const cacheKey = `g_tts_${langCode}_${text}`
+    
     const cached = await dbGet(cacheKey)
     if (cached) return cached
 
     try {
       setStatus('fetching')
-      const response = await fetch('https://api.openai.com/v1/audio/speech', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${OPENAI_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: 'tts-1',
-          input: text,
-          voice: lang.startsWith('en') ? 'alloy' : 'nova',
-          speed: speed,
-        }),
-      })
-      if (!response.ok) {
-        const errJson = await response.json().catch(() => ({}))
-        throw new Error(`OpenAI Error: ${response.status} ${errJson.error?.message || ''}`)
-      }
+      // Google TTS 非公式APIエンドポイント
+      const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${langCode}&client=tw-ob`
+      
+      const response = await fetch(url)
+      if (!response.ok) throw new Error('Google TTS Failed')
+      
       const blob = await response.blob()
       await dbSet(cacheKey, blob)
       return blob
     } catch (e: any) {
-      console.error('Audio fetch failed:', e)
-      setStatus('error')
-      setErrorDetail(e.message)
+      console.error('Google Audio fetch failed:', e)
+      // fetchがCORS等で失敗した場合はnullを返し、speak側で直接URLを指定する
       return null
     }
   }
 
-  const prefetch = useCallback(async (text: string, lang: string, speed: number = 1.0) => {
-    await fetchAudioBlob(text, speed, lang)
-  }, [OPENAI_API_KEY])
+  const prefetch = useCallback(async (text: string, lang: string) => {
+    await fetchAudioBlob(text, lang)
+  }, [])
 
   const speak = useCallback(async (text: string, lang: string, speed: number = 1.0, title?: string): Promise<void> => {
     if (!audioInstanceRef.current) return
 
     setStatus('fetching')
-    const blob = await fetchAudioBlob(text, speed, lang)
-    if (!blob) return
+    const langCode = lang.split('-')[0]
+    let url: string
+    
+    // キャッシュを試みる
+    const blob = await fetchAudioBlob(text, lang)
+    if (blob) {
+      url = URL.createObjectURL(blob)
+    } else {
+      // Fetchが失敗（CORSなど）した場合は、直接GoogleのURLをsrcに入れる
+      // これにより、キャッシュは効かないが再生は可能になる
+      url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${langCode}&client=tw-ob`
+    }
 
     if ('mediaSession' in navigator) {
       navigator.mediaSession.metadata = new MediaMetadata({
         title: title || text,
-        artist: 'English YouTube Phrase App',
+        artist: 'English YouTube Phrase App (Free Mode)',
         album: lang.startsWith('en') ? 'English' : 'Japanese',
       })
     }
 
-    const url = URL.createObjectURL(blob)
     const audio = audioInstanceRef.current
     audio.src = url
+    audio.playbackRate = speed // 再生速度の設定
 
     return new Promise((resolve) => {
       audio.onended = () => {
-        URL.revokeObjectURL(url)
+        if (blob) URL.revokeObjectURL(url)
         setStatus('idle')
         resolve()
       }
@@ -147,19 +139,14 @@ export function useSpeech() {
       }
       audio.onplay = () => setStatus('playing')
       
-      const playPromise = audio.play()
-      if (playPromise !== undefined) {
-        playPromise.then(() => {
-          setStatus('playing')
-        }).catch(e => {
-          console.error('Play blocked:', e)
-          setStatus('error')
-          setErrorDetail('Playback Blocked: iOS Gesture restriction')
-          resolve()
-        })
-      }
+      audio.play().catch(e => {
+        console.error('Play blocked:', e)
+        setStatus('error')
+        setErrorDetail('Playback Blocked: iOS Gesture restriction')
+        resolve()
+      })
     })
-  }, [OPENAI_API_KEY])
+  }, [])
 
-  return { speak, prefetch, init, status, errorDetail, voicesReady: !!OPENAI_API_KEY }
+  return { speak, prefetch, init, status, errorDetail, voicesReady: true }
 }

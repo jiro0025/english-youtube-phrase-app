@@ -11,7 +11,7 @@ type PlayState = 'idle' | 'playing' | 'paused'
 
 export default function RadioPage({ userId }: Props) {
   const { phrases, loading, fetchUnlearned, markAsLearned } = usePhrases(userId)
-  const { speak, prefetch, init, status, errorDetail, voicesReady } = useSpeech()
+  const { speak, prefetch, init, status, errorDetail } = useSpeech()
   
   const [mode, setMode] = useState<'radio' | 'list'>('radio')
   const [speed, setSpeed] = useState(1.0)
@@ -90,8 +90,8 @@ export default function RadioPage({ userId }: Props) {
 
       if (i + 1 < targetPhrases.length) {
         const nextP = targetPhrases[i + 1]
-        prefetch(cleanText(nextP.phrase), 'en-US', speed)
-        prefetch(cleanText(nextP.meaning), 'ja-JP', speed)
+        prefetch(cleanText(nextP.phrase), 'en-US')
+        prefetch(cleanText(nextP.meaning), 'ja-JP')
       }
 
       try {
@@ -124,7 +124,6 @@ export default function RadioPage({ userId }: Props) {
   }, [speak, prefetch, speed])
 
   const handlePlay = () => {
-    // IMPORTANT: Authorize audio device on first click
     init()
 
     if (playState === 'playing') {
@@ -228,7 +227,6 @@ export default function RadioPage({ userId }: Props) {
                     <span className={`status-tag status-${status}`}>
                       {status === 'fetching' && '⏳ Fetching'}
                       {status === 'playing' && '🔊 Playing'}
-                      {(status === 'error' || status === 'key_missing') && '❌ Status: ' + status}
                     </span>
                   )}
                 </div>
@@ -267,14 +265,13 @@ export default function RadioPage({ userId }: Props) {
 
       {/* Debug Section */}
       <div className="debug-dashboard">
-        <h3 className="debug-title">⚙️ Debug Info (Support Only)</h3>
+        <h3 className="debug-title">⚙️ Free Mode (Google TTS)</h3>
         <div className="debug-grid">
-          <div className="debug-item"><span>API Key:</span> <strong style={{color: voicesReady ? '#4ade80' : '#f87171'}}>{voicesReady ? 'OK' : 'MISSING'}</strong></div>
           <div className="debug-item"><span>Status:</span> <strong className={`status-${status}`}>{status.toUpperCase()}</strong></div>
           {errorDetail && <div className="debug-error">Error: {errorDetail}</div>}
         </div>
-        <p className="debug-hint">💡 音が聞こえない場合は <b>「iPhone横のミュートスイッチ」</b> がオレンジになっていないか確認してください。</p>
-        <p className="debug-hint">💡 ❌ が出ている場合はVercelの環境変数設定を確認してください。</p>
+        <p className="debug-hint">💡 現在完全無料モードで動作しています。APIキーは不要です。</p>
+        <p className="debug-hint">💡 音が聞こえない場合は <b>「iPhone横のミュートスイッチ」</b> を確認してください。</p>
       </div>
     </div>
   )
