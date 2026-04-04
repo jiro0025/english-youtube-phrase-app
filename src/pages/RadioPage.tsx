@@ -11,7 +11,7 @@ type PlayState = 'idle' | 'playing' | 'paused'
 
 export default function RadioPage({ userId }: Props) {
   const { phrases, loading, fetchUnlearned, markAsLearned } = usePhrases(userId)
-  const { speak, prefetch, init, status } = useSpeech()
+  const { speak, prefetch, init, status, errorDetail, voicesReady } = useSpeech()
   
   const [mode, setMode] = useState<'radio' | 'list'>('radio')
   const [speed, setSpeed] = useState(1.0)
@@ -88,7 +88,6 @@ export default function RadioPage({ userId }: Props) {
       setDisplayPhrase(phrase)
       setDisplayMeaning('')
 
-      // Pre-fetch next phrase audio for smooth background playback
       if (i + 1 < targetPhrases.length) {
         const nextP = targetPhrases[i + 1]
         prefetch(cleanText(nextP.phrase), 'en-US', speed)
@@ -96,21 +95,18 @@ export default function RadioPage({ userId }: Props) {
       }
 
       try {
-        // English #1
         setCurrentStep('en1')
         await speak(phrase, 'en-US', speed, `🔊 ${phrase}`)
         await delay(500)
 
         if (cancelRef.current) break
 
-        // English #2
         setCurrentStep('en2')
         await speak(phrase, 'en-US', speed, `🔊 ${phrase} (2nd)`)
         await delay(700)
 
         if (cancelRef.current) break
 
-        // Japanese
         setCurrentStep('ja')
         setDisplayMeaning(meaning)
         await speak(meaning, 'ja-JP', speed, `🇯🇵 ${meaning}`)
@@ -128,7 +124,7 @@ export default function RadioPage({ userId }: Props) {
   }, [speak, prefetch, speed])
 
   const handlePlay = () => {
-    // CRITICAL: Initialize audio on user gesture
+    // IMPORTANT: Authorize audio device on first click
     init()
 
     if (playState === 'playing') {
@@ -145,7 +141,6 @@ export default function RadioPage({ userId }: Props) {
     const target = phrases.slice(0, limit)
     if (target.length === 0) return
 
-    // iOS Requirement: Audio must start on user interaction
     if (silentAudioRef.current) {
       silentAudioRef.current.play().catch(() => {})
     }
@@ -179,7 +174,7 @@ export default function RadioPage({ userId }: Props) {
   const targetCount = Math.min(limit, phrases.length)
 
   return (
-    <div>
+    <div className="radio-container">
       <div className="page-header">
         <h1 className="page-title">Radio Mode 📻</h1>
         <div className="mode-tabs">
@@ -209,36 +204,13 @@ export default function RadioPage({ userId }: Props) {
           {playState === 'idle' && (
             <div className="settings-panel">
               <div className="stats-badge">📚 {phrases.length}件の対象</div>
-              
               <div className="slider-wrapper">
-                <div className="slider-label">
-                  <span>再生件数</span>
-                  <span>{limit}件</span>
-                </div>
-                <input
-                  className="slider-input"
-                  type="range"
-                  min={1}
-                  max={phrases.length}
-                  value={limit}
-                  onChange={(e) => setLimit(Number(e.target.value))}
-                />
+                <div className="slider-label"><span>再生件数</span><span>{limit}件</span></div>
+                <input className="slider-input" type="range" min={1} max={phrases.length} value={limit} onChange={(e) => setLimit(Number(e.target.value))} />
               </div>
-
               <div className="slider-wrapper">
-                <div className="slider-label">
-                  <span>再生速度</span>
-                  <span>{speed.toFixed(1)}x</span>
-                </div>
-                <input
-                  className="slider-input"
-                  type="range"
-                  min={0.5}
-                  max={2.0}
-                  step={0.1}
-                  value={speed}
-                  onChange={(e) => setSpeed(Number(e.target.value))}
-                />
+                <div className="slider-label"><span>再生速度</span><span>{speed.toFixed(1)}x</span></div>
+                <input className="slider-input" type="range" min={0.5} max={2.0} step={0.1} value={speed} onChange={(e) => setSpeed(Number(e.target.value))} />
               </div>
             </div>
           )}
@@ -246,48 +218,25 @@ export default function RadioPage({ userId }: Props) {
           <div className="radio-player">
             {playState !== 'idle' && (
               <div className="radio-current">
-                <button 
-                  className="quick-check-btn" 
-                  onClick={() => currentPhraseId && handleQuickCheck(currentPhraseId)}
-                >
-                  ✅ Learned
-                </button>
-                <div className="radio-phrase" style={{
-                  color: currentStep === 'ja' ? 'var(--accent-secondary)' : 'var(--text-primary)',
-                }}>
-                  {displayPhrase}
-                </div>
-                <div className="radio-meaning">
-                  {displayMeaning}
-                </div>
-                <div className="progress-bar">
-                  <div
-                    className="progress-fill"
-                    style={{ width: `${((currentIndex + 1) / targetCount) * 100}%` }}
-                  />
-                </div>
+                <button className="quick-check-btn" onClick={() => currentPhraseId && handleQuickCheck(currentPhraseId)}>✅ Learned</button>
+                <div className="radio-phrase" style={{ color: currentStep === 'ja' ? 'var(--accent-secondary)' : 'var(--text-primary)' }}>{displayPhrase}</div>
+                <div className="radio-meaning">{displayMeaning}</div>
+                <div className="progress-bar"><div className="progress-fill" style={{ width: `${((currentIndex + 1) / targetCount) * 100}%` }} /></div>
                 <div className="radio-counter">
                   {currentIndex + 1} / {targetCount}
                   {status !== 'idle' && (
                     <span className={`status-tag status-${status}`}>
                       {status === 'fetching' && '⏳ Fetching'}
                       {status === 'playing' && '🔊 Playing'}
-                      {status === 'error' && '❌ API Error'}
+                      {(status === 'error' || status === 'key_missing') && '❌ Status: ' + status}
                     </span>
                   )}
                 </div>
               </div>
             )}
-
             <div className="radio-controls">
-              {playState !== 'idle' && (
-                <button className="radio-btn radio-btn-secondary" onClick={handleStop}>
-                  ⏹
-                </button>
-              )}
-              <button className="radio-btn radio-btn-play" onClick={handlePlay}>
-                {playState === 'playing' ? '⏸' : '▶'}
-              </button>
+              {playState !== 'idle' && <button className="radio-btn radio-btn-secondary" onClick={handleStop}>⏹</button>}
+              <button className="radio-btn radio-btn-play" onClick={handlePlay}>{playState === 'playing' ? '⏸' : '▶'}</button>
             </div>
           </div>
         </>
@@ -295,23 +244,9 @@ export default function RadioPage({ userId }: Props) {
         <div className="check-list-mode">
           <div className="settings-panel">
             <div className="slider-wrapper">
-              <div className="slider-label">
-                <span>再生速度</span>
-                <span>{speed.toFixed(1)}x</span>
-              </div>
-              <input
-                className="slider-input"
-                type="range"
-                min={0.5}
-                max={2.0}
-                step={0.1}
-                value={speed}
-                onChange={(e) => setSpeed(Number(e.target.value))}
-              />
+              <div className="slider-label"><span>再生速度</span><span>{speed.toFixed(1)}x</span></div>
+              <input className="slider-input" type="range" min={0.5} max={2.0} step={0.1} value={speed} onChange={(e) => setSpeed(Number(e.target.value))} />
             </div>
-            {status === 'error' && (
-              <div className="status-error-msg">⚠️ OpenAI API Key が設定されていないか、エラーが発生しました。</div>
-            )}
           </div>
           <div className="list-container">
             {phrases.map((p) => (
@@ -321,18 +256,26 @@ export default function RadioPage({ userId }: Props) {
                   <div className="list-card-meaning">{p.meaning}</div>
                 </div>
                 <div className="list-card-actions">
-                  <button className="icon-btn" onClick={() => { init(); speak(p.phrase, 'en-US', speed); }}>
-                    🔊
-                  </button>
-                  <button className="icon-btn check" onClick={() => markAsLearned(p.id)}>
-                    ✅
-                  </button>
+                  <button className="icon-btn" onClick={() => { init(); speak(p.phrase, 'en-US', speed); }}>🔊</button>
+                  <button className="icon-btn check" onClick={() => markAsLearned(p.id)}>✅</button>
                 </div>
               </div>
             ))}
           </div>
         </div>
       )}
+
+      {/* Debug Section */}
+      <div className="debug-dashboard">
+        <h3 className="debug-title">⚙️ Debug Info (Support Only)</h3>
+        <div className="debug-grid">
+          <div className="debug-item"><span>API Key:</span> <strong style={{color: voicesReady ? '#4ade80' : '#f87171'}}>{voicesReady ? 'OK' : 'MISSING'}</strong></div>
+          <div className="debug-item"><span>Status:</span> <strong className={`status-${status}`}>{status.toUpperCase()}</strong></div>
+          {errorDetail && <div className="debug-error">Error: {errorDetail}</div>}
+        </div>
+        <p className="debug-hint">💡 音が聞こえない場合は <b>「iPhone横のミュートスイッチ」</b> がオレンジになっていないか確認してください。</p>
+        <p className="debug-hint">💡 ❌ が出ている場合はVercelの環境変数設定を確認してください。</p>
+      </div>
     </div>
   )
 }
