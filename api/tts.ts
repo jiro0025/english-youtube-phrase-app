@@ -1,13 +1,13 @@
-import { NextRequest } from 'next/server';
-
+// Vercel Serverless Function (Edge Runtime)
+// This is used for a Vite project, so we don't need 'next/server'
 export const config = {
   runtime: 'edge',
 };
 
-export default async function handler(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const text = searchParams.get('q');
-  const lang = searchParams.get('l') || 'en';
+export default async function handler(req: Request) {
+  const urlParams = new URL(req.url).searchParams;
+  const text = urlParams.get('q');
+  const lang = urlParams.get('l') || 'en';
 
   if (!text) {
     return new Response('Missing text', { status: 400 });
@@ -28,7 +28,6 @@ export default async function handler(req: NextRequest) {
       return new Response('Google TTS Failed', { status: response.status });
     }
 
-    // Proxy the audio data back to the client
     const audioData = await response.arrayBuffer();
     return new Response(audioData, {
       headers: {
