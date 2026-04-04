@@ -961,3 +961,119 @@ select.form-input {
 .icon-btn:active {
   transform: scale(0.95);
 }
+
+/* ============================================ */
+/* Radio Page Enhancements                      */
+/* ============================================ */
+.mode-tabs {
+  display: flex;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 4px;
+  border-radius: var(--radius-md);
+  margin-top: 10px;
+}
+
+.mode-tab {
+  flex: 1;
+  padding: 8px 16px;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+}
+
+.mode-tab.active {
+  background: var(--accent-primary);
+  color: white;
+  box-shadow: 0 2px 8px rgba(124, 92, 252, 0.3);
+}
+
+.settings-panel {
+  background: rgba(255, 255, 255, 0.03);
+  padding: 16px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-color);
+  margin-bottom: 20px;
+}
+
+.quick-check-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: rgba(52, 211, 153, 0.15);
+  border: 1px solid rgba(52, 211, 153, 0.3);
+  color: var(--success);
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  z-index: 10;
+}
+
+.quick-check-btn:hover {
+  background: var(--success);
+  color: white;
+  transform: translateY(-2px);
+}
+
+/* ============================================ */
+/* Check List Mode                              */
+/* ============================================ */
+.list-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.list-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 14px 18px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  transition: all var(--transition-fast);
+}
+
+.list-card:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--accent-primary);
+}
+
+.list-card-content {
+  flex: 1;
+  margin-right: 15px;
+}
+
+.list-card-phrase {
+  font-weight: 700;
+  color: var(--text-primary);
+  font-size: 1rem;
+  margin-bottom: 4px;
+}
+
+.list-card-meaning {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.list-card-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.icon-btn.check {
+  color: var(--success);
+}
+
+.icon-btn.check:hover {
+  background: rgba(52, 211, 153, 0.1);
+}
