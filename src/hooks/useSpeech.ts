@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 
-// --- IndexedDB Cache Helper (Free Mode) ---
-const DB_NAME = 'EnglishAppAudioCacheFree'
+// --- IndexedDB Cache Helper ---
+const DB_NAME = 'EnglishAppAudioCacheV4'
 const STORE_NAME = 'audio_blobs'
 
 const openDB = (): Promise<IDBDatabase> => {
@@ -59,7 +59,7 @@ export function useSpeech() {
       audioInstanceRef.current.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA'
       audioInstanceRef.current.play().then(() => {
         audioInstanceRef.current?.pause()
-        console.log('Audio Engine Primed')
+        console.log('Audio Bridge Initialized')
       }).catch(e => {
         console.warn('Audio init failed:', e)
         setErrorDetail('Init Error: ' + e.message)
@@ -69,22 +69,26 @@ export function useSpeech() {
 
   const fetchAudioBlob = async (text: string, lang: string): Promise<Blob | null> => {
     const langCode = lang.split('-')[0]
-    const cacheKey = `g_tts_${langCode}_${text}`
+    const cacheKey = `bridge_tts_${langCode}_${text}`
     
     const cached = await dbGet(cacheKey)
     if (cached) return cached
 
     try {
       setStatus('fetching')
-      const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${langCode}&client=tw-ob`
+      // Vercel Proxy API Endpoint
+      const url = `/api/tts?q=${encodeURIComponent(text)}&l=${langCode}`
+      
       const response = await fetch(url)
-      if (!response.ok) throw new Error('Google TTS Failed')
+      if (!response.ok) throw new Error(`Server Error: ${response.status}`)
       
       const blob = await response.blob()
       await dbSet(cacheKey, blob)
       return blob
     } catch (e: any) {
-      console.error('Google Audio fetch failed:', e)
+      console.error('Audio fetch failed:', e)
+      setStatus('error')
+      setErrorDetail(e.message)
       return null
     }
   }
@@ -97,15 +101,8 @@ export function useSpeech() {
     if (!audioInstanceRef.current) return
 
     setStatus('fetching')
-    const langCode = lang.split('-')[0]
-    let url: string
-    
     const blob = await fetchAudioBlob(text, lang)
-    if (blob) {
-      url = URL.createObjectURL(blob)
-    } else {
-      url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${langCode}&client=tw-ob`
-    }
+    if (!blob) return
 
     if ('mediaSession' in navigator) {
       navigator.mediaSession.metadata = new MediaMetadata({
@@ -115,19 +112,20 @@ export function useSpeech() {
       })
     }
 
+    const url = URL.createObjectURL(blob)
     const audio = audioInstanceRef.current
     audio.src = url
     audio.playbackRate = speed
 
     return new Promise((resolve) => {
       audio.onended = () => {
-        if (blob) URL.revokeObjectURL(url)
+        URL.revokeObjectURL(url)
         setStatus('idle')
         resolve()
       }
       audio.onerror = () => {
         setStatus('error')
-        setErrorDetail('Playback Error: invalid source')
+        setErrorDetail('Playback Error: source file check')
         resolve()
       }
       audio.onplay = () => setStatus('playing')
