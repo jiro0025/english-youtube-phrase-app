@@ -10,7 +10,7 @@ interface Props {
 type PlayState = 'idle' | 'playing' | 'paused'
 
 export default function RadioPage({ userId }: Props) {
-  const { phrases, loading, fetchUnlearned, markAsLearned } = usePhrases(userId)
+  const { phrases, fetchUnlearned, markAsLearned } = usePhrases(userId)
   const { speak, prefetch, init, stop, status } = useSpeech()
   
   const [mode, setMode] = useState<'radio' | 'list'>('radio')
