@@ -61,8 +61,8 @@ export function useSpeech() {
         audioInstanceRef.current?.pause()
         console.log('Audio Bridge Initialized')
       }).catch(e => {
-        console.warn('Audio init failed:', e)
-        setErrorDetail('Init Error: ' + e.message)
+        // iOS では頻繁に発生する AbortError を無視して、メインの再生へ移る
+        console.warn('Audio init silent fail (ignored):', e)
       })
     }
   }, [])

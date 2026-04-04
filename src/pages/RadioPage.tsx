@@ -26,43 +26,18 @@ export default function RadioPage({ userId }: Props) {
   const playStateRef = useRef(playState)
   const currentIndexRef = useRef(currentIndex)
   const cancelRef = useRef(false)
-  
-  // Silent audio loop refs for iOS backgrounding
-  const audioContextRef = useRef<AudioContext | null>(null)
-  const silentOscillatorRef = useRef<OscillatorNode | null>(null)
+  const silentAudioRef = useRef<HTMLAudioElement | null>(null)
 
-  // Web Audio API: Silent oscillator to keep process alive in background
-  const initSilentAudio = useCallback(() => {
-    if (!audioContextRef.current) {
-      const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext)
-      audioContextRef.current = new AudioContextClass()
-    }
-    const ctx = audioContextRef.current
-    if (ctx.state === 'suspended') {
-      ctx.resume()
-    }
+  // Stable Silent Audio Loop (10 sec) for iOS 17+ backgrounding
+  useEffect(() => {
+    const silentSrc = 'data:audio/mpeg;base64,SUQzBAAAAAABAFRYWFhYAAAADAAAY29udGVudAB0eXBlAGF1ZGlvL21wZWdB/++MYxAAAAANIAAAAAExBTUUzLjk4LjIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/+MYxQAAP8AAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/+MYxQsAP8AAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/+MYxRMAP8AAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/'
+    const audio = new Audio(silentSrc)
+    audio.loop = true
+    silentAudioRef.current = audio
     
-    // Stop previous if any
-    if (silentOscillatorRef.current) {
-        silentOscillatorRef.current.stop()
-        silentOscillatorRef.current = null
-    }
-
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    // Sub-bass frequency (not audible) and near-zero volume
-    osc.frequency.setValueAtTime(10, ctx.currentTime)
-    gain.gain.setValueAtTime(0.0001, ctx.currentTime) 
-    osc.connect(gain)
-    gain.connect(ctx.destination)
-    osc.start()
-    silentOscillatorRef.current = osc
-  }, [])
-
-  const stopSilentAudio = useCallback(() => {
-    if (silentOscillatorRef.current) {
-      silentOscillatorRef.current.stop()
-      silentOscillatorRef.current = null
+    return () => {
+      audio.pause()
+      silentAudioRef.current = null
     }
   }, [])
 
@@ -72,11 +47,8 @@ export default function RadioPage({ userId }: Props) {
 
   useEffect(() => {
     playStateRef.current = playState
-  }, [playState])
-
-  useEffect(() => {
     currentIndexRef.current = currentIndex
-  }, [currentIndex])
+  }, [playState, currentIndex])
 
   const cleanText = (text: string) => {
     return text.replace(/\s*\[\d+(?:,\s*\d+)*\]\s*/g, '').trim()
@@ -127,7 +99,6 @@ export default function RadioPage({ userId }: Props) {
       try {
         setCurrentStep('en1')
         await speak(phrase, 'en-US', speed, `🔊 ${phrase}`)
-        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing'
         await delay(500)
 
         if (cancelRef.current) break
@@ -148,69 +119,45 @@ export default function RadioPage({ userId }: Props) {
     }
 
     setPlayState('idle')
-    stopSilentAudio()
+    if (silentAudioRef.current) silentAudioRef.current.pause()
     setCurrentPhraseId(null)
     setDisplayPhrase('')
     setDisplayMeaning('')
-    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'none'
-  }, [speak, prefetch, speed, stopSilentAudio])
+  }, [speak, prefetch, speed])
 
   const handlePlay = useCallback(() => {
-    init()
-    initSilentAudio()
+    init() // Primer in useSpeech
 
     if (playState === 'playing') {
+      if (silentAudioRef.current) silentAudioRef.current.pause()
       setPlayState('paused')
       stop()
-      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused'
       return
     }
-    if (playState === 'paused') {
-      const target = phrases.slice(0, limit)
-      setPlayState('playing')
-      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing'
-      playSequence(target, currentIndexRef.current)
-      return
+    
+    if (silentAudioRef.current) {
+      silentAudioRef.current.play().catch(() => {})
     }
 
     const target = phrases.slice(0, limit)
     if (target.length === 0) return
 
     setPlayState('playing')
-    setCurrentIndex(0)
-    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing'
-    playSequence(target)
-  }, [init, initSilentAudio, playState, phrases, limit, playSequence, stop])
+    const startIndex = (playState === 'paused') ? currentIndexRef.current : 0
+    if (playState === 'idle') setCurrentIndex(0)
+    
+    playSequence(target, startIndex)
+  }, [init, playState, phrases, limit, playSequence, stop])
 
   const handleStop = useCallback(() => {
     cancelRef.current = true
     stop()
-    stopSilentAudio()
+    if (silentAudioRef.current) silentAudioRef.current.pause()
     setPlayState('idle')
     setCurrentPhraseId(null)
     setDisplayPhrase('')
     setDisplayMeaning('')
-    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'none'
-  }, [stop, stopSilentAudio])
-
-  // Media Session Control
-  useEffect(() => {
-    if ('mediaSession' in navigator && playState !== 'idle') {
-      navigator.mediaSession.setActionHandler('play', handlePlay)
-      navigator.mediaSession.setActionHandler('pause', handlePlay) // Toggles in handlePlay
-      navigator.mediaSession.setActionHandler('stop', handleStop)
-      navigator.mediaSession.setActionHandler('nexttrack', () => {
-         // Potential future feature: skip to next phrase
-      })
-    }
-    return () => {
-      if ('mediaSession' in navigator) {
-        navigator.mediaSession.setActionHandler('play', null)
-        navigator.mediaSession.setActionHandler('pause', null)
-        navigator.mediaSession.setActionHandler('stop', null)
-      }
-    }
-  }, [playState, handlePlay, handleStop])
+  }, [stop])
 
   const handleQuickCheck = async (id: string) => {
     await markAsLearned(id)
@@ -231,18 +178,8 @@ export default function RadioPage({ userId }: Props) {
       <div className="page-header">
         <h1 className="page-title">Radio Mode 📻</h1>
         <div className="mode-tabs">
-          <button 
-            className={`mode-tab ${mode === 'radio' ? 'active' : ''}`} 
-            onClick={() => { handleStop(); setMode('radio') }}
-          >
-            Radio
-          </button>
-          <button 
-            className={`mode-tab ${mode === 'list' ? 'active' : ''}`} 
-            onClick={() => { handleStop(); setMode('list') }}
-          >
-            Check List
-          </button>
+          <button className={`mode-tab ${mode === 'radio' ? 'active' : ''}`} onClick={() => { handleStop(); setMode('radio') }}>Radio</button>
+          <button className={`mode-tab ${mode === 'list' ? 'active' : ''}`} onClick={() => { handleStop(); setMode('list') }}>Check List</button>
         </div>
       </div>
 
@@ -250,7 +187,6 @@ export default function RadioPage({ userId }: Props) {
         <div className="empty-state">
           <div className="empty-icon">🎉</div>
           <div className="empty-title">対象フレーズがありません</div>
-          <div className="empty-text">すべて学習済みです</div>
         </div>
       ) : mode === 'radio' ? (
         <>
@@ -294,12 +230,6 @@ export default function RadioPage({ userId }: Props) {
         </>
       ) : (
         <div className="check-list-mode">
-          <div className="settings-panel">
-            <div className="slider-wrapper">
-              <div className="slider-label"><span>再生速度</span><span>{speed.toFixed(1)}x</span></div>
-              <input className="slider-input" type="range" min={0.5} max={2.0} step={0.1} value={speed} onChange={(e) => setSpeed(Number(e.target.value))} />
-            </div>
-          </div>
           <div className="list-container">
             {phrases.map((p) => (
               <div key={p.id} className="list-card">
@@ -308,7 +238,7 @@ export default function RadioPage({ userId }: Props) {
                   <div className="list-card-meaning">{p.meaning}</div>
                 </div>
                 <div className="list-card-actions">
-                  <button className="icon-btn" onClick={() => { init(); initSilentAudio(); speak(p.phrase, 'en-US', speed); }}>🔊</button>
+                  <button className="icon-btn" onClick={() => { init(); speak(p.phrase, 'en-US', speed); }}>🔊</button>
                   <button className="icon-btn check" onClick={() => markAsLearned(p.id)}>✅</button>
                 </div>
               </div>
@@ -322,9 +252,9 @@ export default function RadioPage({ userId }: Props) {
         <h3 className="debug-title">⚙️ Free Mode (Google TTS)</h3>
         <div className="debug-grid">
           <div className="debug-item"><span>Status:</span> <strong className={`status-${status}`}>{status.toUpperCase()}</strong></div>
-          {errorDetail && <div className="debug-error">Error: {errorDetail}</div>}
+          {errorDetail && <div className="debug-error">{errorDetail}</div>}
         </div>
-        <p className="debug-hint">💡 バックグラウンド維持機能を強化しました (Oscillator + MediaSession)。</p>
+        <p className="debug-hint">💡 iOSの再生制限を回避するため、シンプルな10秒無音ループ方式に戻しました。</p>
       </div>
     </div>
   )
