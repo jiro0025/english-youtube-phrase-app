@@ -11,7 +11,7 @@ type PlayState = 'idle' | 'playing' | 'paused'
 
 export default function RadioPage({ userId }: Props) {
   const { phrases, loading, fetchUnlearned, markAsLearned } = usePhrases(userId)
-  const { speak, prefetch, init, stop, status, errorDetail } = useSpeech()
+  const { speak, prefetch, init, stop, status } = useSpeech()
   
   const [mode, setMode] = useState<'radio' | 'list'>('radio')
   const [speed, setSpeed] = useState(1.0)
@@ -23,22 +23,18 @@ export default function RadioPage({ userId }: Props) {
   const [displayPhrase, setDisplayPhrase] = useState('')
   const [displayMeaning, setDisplayMeaning] = useState('')
 
-  const playStateRef = useRef(playState)
-  const currentIndexRef = useRef(currentIndex)
-  const cancelRef = useRef(false)
+  const phrasesRef = useRef<Phrase[]>([])
+  const currentIndexRef = useRef(0)
+  const stopRequestedRef = useRef(false)
   const silentAudioRef = useRef<HTMLAudioElement | null>(null)
 
-  // Stable Silent Audio Loop (10 sec) for iOS 17+ backgrounding
+  // 10秒無音ループ（プロセス維持用）
   useEffect(() => {
     const silentSrc = 'data:audio/mpeg;base64,SUQzBAAAAAABAFRYWFhYAAAADAAAY29udGVudAB0eXBlAGF1ZGlvL21wZWdB/++MYxAAAAANIAAAAAExBTUUzLjk4LjIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/+MYxQAAP8AAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/+MYxQsAP8AAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/+MYxRMAP8AAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/'
     const audio = new Audio(silentSrc)
     audio.loop = true
     silentAudioRef.current = audio
-    
-    return () => {
-      audio.pause()
-      silentAudioRef.current = null
-    }
+    return () => audio.pause()
   }, [])
 
   useEffect(() => {
@@ -46,111 +42,87 @@ export default function RadioPage({ userId }: Props) {
   }, [fetchUnlearned])
 
   useEffect(() => {
-    playStateRef.current = playState
-    currentIndexRef.current = currentIndex
-  }, [playState, currentIndex])
+    phrasesRef.current = phrases.slice(0, limit)
+  }, [phrases, limit])
 
   const cleanText = (text: string) => {
     return text.replace(/\s*\[\d+(?:,\s*\d+)*\]\s*/g, '').trim()
   }
 
-  const delay = (ms: number): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        if (cancelRef.current) {
-          reject(new Error('cancelled'))
-        } else {
-          resolve()
-        }
-      }, ms / speed)
+  // --- 再生ロジックの刷新: 1フレーズごとの「数珠つなぎ」方式 ---
 
-      const check = setInterval(() => {
-        if (cancelRef.current) {
-          clearTimeout(timer)
-          clearInterval(check)
-          reject(new Error('cancelled'))
-        }
-      }, 50)
-      setTimeout(() => clearInterval(check), (ms / speed) + 50)
-    })
-  }
-
-  const playSequence = useCallback(async (targetPhrases: Phrase[], startIndex: number = 0) => {
-    cancelRef.current = false
-
-    for (let i = startIndex; i < targetPhrases.length; i++) {
-      if (cancelRef.current) break
-
-      const p = targetPhrases[i]
-      const phrase = cleanText(p.phrase)
-      const meaning = cleanText(p.meaning || '意味なし')
-
-      setCurrentIndex(i)
-      setCurrentPhraseId(p.id)
-      setDisplayPhrase(phrase)
-      setDisplayMeaning('')
-
-      if (i + 1 < targetPhrases.length) {
-        const nextP = targetPhrases[i + 1]
-        prefetch(cleanText(nextP.phrase), 'en-US')
-        prefetch(cleanText(nextP.meaning), 'ja-JP')
-      }
-
-      try {
-        setCurrentStep('en1')
-        await speak(phrase, 'en-US', speed, `🔊 ${phrase}`)
-        await delay(500)
-
-        if (cancelRef.current) break
-
-        setCurrentStep('en2')
-        await speak(phrase, 'en-US', speed, `🔊 ${phrase} (2nd)`)
-        await delay(700)
-
-        if (cancelRef.current) break
-
-        setCurrentStep('ja')
-        setDisplayMeaning(meaning)
-        await speak(meaning, 'ja-JP', speed, `🇯🇵 ${meaning}`)
-        await delay(1200)
-      } catch (e) {
-        if (e instanceof Error && e.message === 'cancelled') break
-      }
+  const playPhrase = useCallback(async (index: number) => {
+    if (stopRequestedRef.current || index >= phrasesRef.current.length) {
+      setPlayState('idle')
+      if (silentAudioRef.current) silentAudioRef.current.pause()
+      return
     }
 
-    setPlayState('idle')
-    if (silentAudioRef.current) silentAudioRef.current.pause()
-    setCurrentPhraseId(null)
-    setDisplayPhrase('')
+    const p = phrasesRef.current[index]
+    const phrase = cleanText(p.phrase)
+    const meaning = cleanText(p.meaning || '')
+
+    setCurrentIndex(index)
+    setCurrentPhraseId(p.id)
+    setDisplayPhrase(phrase)
     setDisplayMeaning('')
+
+    // 次のフレーズをバックグラウンドで先読み（通信切れ対策）
+    if (index + 1 < phrasesRef.current.length) {
+      const nextP = phrasesRef.current[index + 1]
+      prefetch(cleanText(nextP.phrase), 'en-US')
+      prefetch(cleanText(nextP.meaning), 'ja-JP')
+    }
+
+    try {
+      // Step 1: English #1
+      setCurrentStep('en1')
+      await speak(phrase, 'en-US', speed, `🔊 ${phrase}`)
+      if (stopRequestedRef.current) throw 'stopped'
+      await new Promise(r => setTimeout(r, 600 / speed))
+
+      // Step 2: English #2
+      setCurrentStep('en2')
+      await speak(phrase, 'en-US', speed, `🔊 ${phrase} (2nd)`)
+      if (stopRequestedRef.current) throw 'stopped'
+      await new Promise(r => setTimeout(r, 800 / speed))
+
+      // Step 3: Japanese
+      setCurrentStep('ja')
+      setDisplayMeaning(meaning)
+      await speak(meaning, 'ja-JP', speed, `🇯🇵 ${meaning}`)
+      if (stopRequestedRef.current) throw 'stopped'
+      await new Promise(r => setTimeout(r, 1200 / speed))
+
+      // --- NEXT PHRASE ---
+      if (!stopRequestedRef.current) {
+        playPhrase(index + 1)
+      }
+    } catch (e) {
+      console.log('Playback interrupted or error:', e)
+    }
   }, [speak, prefetch, speed])
 
   const handlePlay = useCallback(() => {
-    init() // Primer in useSpeech
+    init() // iOSオーディオ初期化
+    if (silentAudioRef.current) silentAudioRef.current.play().catch(() => {})
 
     if (playState === 'playing') {
-      if (silentAudioRef.current) silentAudioRef.current.pause()
+      stopRequestedRef.current = true
       setPlayState('paused')
       stop()
       return
     }
-    
-    if (silentAudioRef.current) {
-      silentAudioRef.current.play().catch(() => {})
-    }
 
-    const target = phrases.slice(0, limit)
-    if (target.length === 0) return
-
+    stopRequestedRef.current = false
     setPlayState('playing')
-    const startIndex = (playState === 'paused') ? currentIndexRef.current : 0
-    if (playState === 'idle') setCurrentIndex(0)
     
-    playSequence(target, startIndex)
-  }, [init, playState, phrases, limit, playSequence, stop])
+    const startIndex = (playState === 'paused') ? currentIndexRef.current : 0
+    playPhrase(startIndex)
+  }, [init, playState, playPhrase, stop])
 
   const handleStop = useCallback(() => {
-    cancelRef.current = true
+    stopRequestedRef.current = true
     stop()
     if (silentAudioRef.current) silentAudioRef.current.pause()
     setPlayState('idle')
@@ -163,15 +135,7 @@ export default function RadioPage({ userId }: Props) {
     await markAsLearned(id)
   }
 
-  if (loading) {
-    return (
-      <div className="loading-center">
-        <div className="spinner" />
-      </div>
-    )
-  }
-
-  const targetCount = Math.min(limit, phrases.length)
+  const targetCount = phrasesRef.current.length
 
   return (
     <div className="radio-container">
@@ -247,14 +211,9 @@ export default function RadioPage({ userId }: Props) {
         </div>
       )}
 
-      {/* Debug Info */}
       <div className="debug-dashboard">
-        <h3 className="debug-title">⚙️ Free Mode (Google TTS)</h3>
-        <div className="debug-grid">
-          <div className="debug-item"><span>Status:</span> <strong className={`status-${status}`}>{status.toUpperCase()}</strong></div>
-          {errorDetail && <div className="debug-error">{errorDetail}</div>}
-        </div>
-        <p className="debug-hint">💡 iOSの再生制限を回避するため、シンプルな10秒無音ループ方式に戻しました。</p>
+        <h3 className="debug-title">⚙️ Playback Logic: Daisy Chain</h3>
+        <p className="debug-hint">💡 フレーズを数珠つなぎで再生する新方式に切り替えました。バックグラウンドでの安定性が向上しています。</p>
       </div>
     </div>
   )
