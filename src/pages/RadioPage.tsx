@@ -11,7 +11,7 @@ type PlayState = 'idle' | 'playing' | 'paused'
 
 export default function RadioPage({ userId }: Props) {
   const { phrases, loading, fetchUnlearned, markAsLearned } = usePhrases(userId)
-  const { speak } = useSpeech()
+  const { speak, prefetch } = useSpeech()
   
   const [mode, setMode] = useState<'radio' | 'list'>('radio')
   const [speed, setSpeed] = useState(1.0)
@@ -25,6 +25,20 @@ export default function RadioPage({ userId }: Props) {
 
   const playStateRef = useRef(playState)
   const cancelRef = useRef(false)
+  const silentAudioRef = useRef<HTMLAudioElement | null>(null)
+
+  // Silent audio trick for iOS backgrounding
+  useEffect(() => {
+    const silentSrc = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA'
+    const audio = new Audio(silentSrc)
+    audio.loop = true
+    silentAudioRef.current = audio
+    
+    return () => {
+      audio.pause()
+      silentAudioRef.current = null
+    }
+  }, [])
 
   useEffect(() => {
     fetchUnlearned()
@@ -46,7 +60,7 @@ export default function RadioPage({ userId }: Props) {
         } else {
           resolve()
         }
-      }, ms / speed) // Adjust delay based on speed
+      }, ms / speed)
 
       const check = setInterval(() => {
         if (cancelRef.current) {
@@ -74,17 +88,24 @@ export default function RadioPage({ userId }: Props) {
       setDisplayPhrase(phrase)
       setDisplayMeaning('')
 
+      // Pre-fetch next phrase audio for smooth background playback
+      if (i + 1 < targetPhrases.length) {
+        const nextP = targetPhrases[i + 1]
+        prefetch(cleanText(nextP.phrase), 'en-US', speed)
+        prefetch(cleanText(nextP.meaning), 'ja-JP', speed)
+      }
+
       try {
         // English #1
         setCurrentStep('en1')
-        await speak(phrase, 'en-US', speed)
+        await speak(phrase, 'en-US', speed, `🔊 ${phrase}`)
         await delay(500)
 
         if (cancelRef.current) break
 
         // English #2
         setCurrentStep('en2')
-        await speak(phrase, 'en-US', speed)
+        await speak(phrase, 'en-US', speed, `🔊 ${phrase} (2nd)`)
         await delay(700)
 
         if (cancelRef.current) break
@@ -92,7 +113,7 @@ export default function RadioPage({ userId }: Props) {
         // Japanese
         setCurrentStep('ja')
         setDisplayMeaning(meaning)
-        await speak(meaning, 'ja-JP', speed)
+        await speak(meaning, 'ja-JP', speed, `🇯🇵 ${meaning}`)
         await delay(1200)
       } catch (e) {
         if (e instanceof Error && e.message === 'cancelled') break
@@ -100,24 +121,32 @@ export default function RadioPage({ userId }: Props) {
     }
 
     setPlayState('idle')
+    if (silentAudioRef.current) silentAudioRef.current.pause()
     setCurrentPhraseId(null)
     setDisplayPhrase('')
     setDisplayMeaning('')
-  }, [speak, speed])
+  }, [speak, prefetch, speed])
 
   const handlePlay = () => {
     if (playState === 'playing') {
-      speechSynthesis.pause()
+      if (silentAudioRef.current) silentAudioRef.current.pause()
       setPlayState('paused')
       return
     }
     if (playState === 'paused') {
-      speechSynthesis.resume()
+      if (silentAudioRef.current) silentAudioRef.current.play().catch(() => {})
       setPlayState('playing')
       return
     }
+
     const target = phrases.slice(0, limit)
     if (target.length === 0) return
+
+    // iOS Requirement: Audio must start on user interaction
+    if (silentAudioRef.current) {
+      silentAudioRef.current.play().catch(() => {})
+    }
+
     setPlayState('playing')
     setCurrentIndex(0)
     playSequence(target)
@@ -125,7 +154,7 @@ export default function RadioPage({ userId }: Props) {
 
   const handleStop = () => {
     cancelRef.current = true
-    speechSynthesis.cancel()
+    if (silentAudioRef.current) silentAudioRef.current.pause()
     setPlayState('idle')
     setCurrentPhraseId(null)
     setDisplayPhrase('')

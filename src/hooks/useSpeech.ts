@@ -1,59 +1,64 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 
-export function useSpeech() {
-  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
-  const audioRef = useRef<HTMLAudioElement | null>(null)
+// --- IndexedDB Cache Helper ---
+const DB_NAME = 'EnglishAppAudioCache'
+const STORE_NAME = 'audio_blobs'
 
-  // API Key from environment variable
+const openDB = (): Promise<IDBDatabase> => {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, 1)
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore(STORE_NAME)
+    }
+    request.onsuccess = () => resolve(request.result)
+    request.onerror = () => reject(request.error)
+  })
+}
+
+const dbGet = async (key: string): Promise<Blob | null> => {
+  const db = await openDB()
+  return new Promise((resolve) => {
+    const transaction = db.transaction(STORE_NAME, 'readonly')
+    const request = transaction.objectStore(STORE_NAME).get(key)
+    request.onsuccess = () => resolve(request.result || null)
+    request.onerror = () => resolve(null)
+  })
+}
+
+const dbSet = async (key: string, blob: Blob): Promise<void> => {
+  const db = await openDB()
+  return new Promise((resolve) => {
+    const transaction = db.transaction(STORE_NAME, 'readwrite')
+    transaction.objectStore(STORE_NAME).put(blob, key)
+    transaction.oncomplete = () => resolve()
+  })
+}
+
+export function useSpeech() {
+  const [voicesReady, setVoicesReady] = useState(false)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
   const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY
 
   useEffect(() => {
-    const loadVoices = () => {
-      const v = speechSynthesis.getVoices()
-      if (v.length > 0) {
-        setVoices(v)
-      }
-    }
-    
-    loadVoices()
-    if (speechSynthesis.onvoiceschanged !== undefined) {
-      speechSynthesis.onvoiceschanged = loadVoices
-    }
-
+    setVoicesReady(!!OPENAI_API_KEY)
     return () => {
       if (audioRef.current) {
         audioRef.current.pause()
         audioRef.current = null
       }
     }
-  }, [])
+  }, [OPENAI_API_KEY])
 
-  const getBestVoiceFallback = useCallback((lang: string) => {
-    const availableVoices = voices.filter(v => v.lang.startsWith(lang))
-    if (availableVoices.length === 0) return null
-    if (lang.startsWith('en')) {
-      return availableVoices.find(v => v.name.includes('Google US English')) ||
-             availableVoices.find(v => v.name.includes('Samantha')) ||
-             availableVoices[0]
-    }
-    if (lang.startsWith('ja')) {
-      // Kyoko (Premium) is the most natural for Japanese on Mac/iOS
-      return availableVoices.find(v => v.name.includes('Kyoko')) ||
-             availableVoices.find(v => v.name.includes('O-ren')) ||
-             availableVoices.find(v => v.name.includes('Google 日本語')) ||
-             availableVoices[0]
-    }
-    return availableVoices[0]
-  }, [voices])
+  const fetchAudioBlob = async (text: string, speed: number, lang: string): Promise<Blob | null> => {
+    if (!OPENAI_API_KEY) return null
+    const cacheKey = `tts_${lang}_${speed}_${text}`
+    
+    // Check Cache first
+    const cached = await dbGet(cacheKey)
+    if (cached) return cached
 
-  const speakOpenAI = async (text: string, speed: number = 1.0): Promise<boolean> => {
-    if (!OPENAI_API_KEY) return false
-
+    // Fetch from OpenAI
     try {
-      if (audioRef.current) {
-        audioRef.current.pause()
-      }
-
       const response = await fetch('https://api.openai.com/v1/audio/speech', {
         method: 'POST',
         headers: {
@@ -63,67 +68,57 @@ export function useSpeech() {
         body: JSON.stringify({
           model: 'tts-1',
           input: text,
-          voice: 'alloy', // Alloy is great for EN
+          voice: lang.startsWith('en') ? 'alloy' : 'nova', // alloy for EN, nova for JA (more natural)
           speed: speed,
         }),
       })
-
       if (!response.ok) throw new Error('OpenAI API Error')
-
       const blob = await response.blob()
-      const url = URL.createObjectURL(blob)
       
-      const audio = new Audio(url)
-      audioRef.current = audio
-      
-      return new Promise((resolve) => {
-        audio.onended = () => {
-          URL.revokeObjectURL(url)
-          resolve(true)
-        }
-        audio.onerror = () => resolve(false)
-        audio.play().catch(() => resolve(false))
-      })
+      // Save to Cache
+      await dbSet(cacheKey, blob)
+      return blob
     } catch (e) {
-      console.error('OpenAI TTS failed:', e)
-      return false
+      console.error('Audio fetch failed:', e)
+      return null
     }
   }
 
-  const speakBrowser = useCallback((text: string, lang: string, speed: number = 1.0): Promise<void> => {
+  const prefetch = useCallback(async (text: string, lang: string, speed: number = 1.0) => {
+    await fetchAudioBlob(text, speed, lang)
+  }, [OPENAI_API_KEY])
+
+  const speak = useCallback(async (text: string, lang: string, speed: number = 1.0, title?: string): Promise<void> => {
+    const blob = await fetchAudioBlob(text, speed, lang)
+    if (!blob) return
+
+    // Setup Media Session (Lock Screen)
+    if ('mediaSession' in navigator) {
+      navigator.mediaSession.metadata = new MediaMetadata({
+        title: title || text,
+        artist: 'English YouTube Phrase App',
+        album: lang.startsWith('en') ? 'English Pronunciation' : 'Japanese Translation',
+      })
+    }
+
+    if (audioRef.current) {
+      audioRef.current.pause()
+    }
+
+    const url = URL.createObjectURL(blob)
+    const audio = new Audio(url)
+    audioRef.current = audio
+
     return new Promise((resolve) => {
-      speechSynthesis.cancel()
-      const utterance = new SpeechSynthesisUtterance(text)
-      utterance.lang = lang
-      const voice = getBestVoiceFallback(lang)
-      if (voice) utterance.voice = voice
-      
-      // Fine-tune browser rate: 
-      // 0.95-1.1 is natural for Japanese Kyoko
-      utterance.rate = speed * (lang.startsWith('en') ? 0.95 : 1.05)
-      
-      utterance.onend = () => resolve()
-      utterance.onerror = () => resolve()
-      speechSynthesis.speak(utterance)
+      audio.onended = () => {
+        URL.revokeObjectURL(url)
+        resolve()
+      }
+      audio.onerror = () => resolve()
+      audio.play().catch(() => resolve())
     })
-  }, [getBestVoiceFallback])
+  }, [OPENAI_API_KEY])
 
-  const speak = useCallback(async (text: string, lang: string, speed: number = 1.0): Promise<void> => {
-    // Japanese: Always use browser (Kyoko is better than OpenAI's multilingual shimmer)
-    if (lang.startsWith('ja')) {
-      await speakBrowser(text, lang, speed)
-      return
-    }
-
-    // English: Try OpenAI first
-    const success = await speakOpenAI(text, speed)
-    
-    // Fallback to browser if OpenAI fails or key is missing
-    if (!success) {
-      await speakBrowser(text, lang, speed)
-    }
-  }, [speakBrowser, OPENAI_API_KEY])
-
-  return { speak, voicesReady: voices.length > 0 || !!OPENAI_API_KEY }
+  return { speak, prefetch, voicesReady }
 }
 
