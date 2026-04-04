@@ -11,7 +11,7 @@ type PlayState = 'idle' | 'playing' | 'paused'
 
 export default function RadioPage({ userId }: Props) {
   const { phrases, loading, fetchUnlearned, markAsLearned } = usePhrases(userId)
-  const { speak, prefetch, init, status, errorDetail } = useSpeech()
+  const { speak, prefetch, init, stop, status, errorDetail } = useSpeech()
   
   const [mode, setMode] = useState<'radio' | 'list'>('radio')
   const [speed, setSpeed] = useState(1.0)
@@ -24,19 +24,45 @@ export default function RadioPage({ userId }: Props) {
   const [displayMeaning, setDisplayMeaning] = useState('')
 
   const playStateRef = useRef(playState)
+  const currentIndexRef = useRef(currentIndex)
   const cancelRef = useRef(false)
-  const silentAudioRef = useRef<HTMLAudioElement | null>(null)
+  
+  // Silent audio loop refs for iOS backgrounding
+  const audioContextRef = useRef<AudioContext | null>(null)
+  const silentOscillatorRef = useRef<OscillatorNode | null>(null)
 
-  // Silent audio (1 sec silence) to keep iOS audio context alive
-  useEffect(() => {
-    const silentSrc = 'data:audio/mpeg;base64,SUQzBAAAAAABAFRYWFhYAAAADAAAY29udGVudAB0eXBlAGF1ZGlvL21wZWdB/++MYxAAAAANIAAAAAExBTUUzLjk4LjIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/+MYxQAAP8AAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/+MYxQsAP8AAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/+MYxRMAP8AAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/'
-    const audio = new Audio(silentSrc)
-    audio.loop = true
-    silentAudioRef.current = audio
+  // Web Audio API: Silent oscillator to keep process alive in background
+  const initSilentAudio = useCallback(() => {
+    if (!audioContextRef.current) {
+      const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext)
+      audioContextRef.current = new AudioContextClass()
+    }
+    const ctx = audioContextRef.current
+    if (ctx.state === 'suspended') {
+      ctx.resume()
+    }
     
-    return () => {
-      audio.pause()
-      silentAudioRef.current = null
+    // Stop previous if any
+    if (silentOscillatorRef.current) {
+        silentOscillatorRef.current.stop()
+        silentOscillatorRef.current = null
+    }
+
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    // Sub-bass frequency (not audible) and near-zero volume
+    osc.frequency.setValueAtTime(10, ctx.currentTime)
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime) 
+    osc.connect(gain)
+    gain.connect(ctx.destination)
+    osc.start()
+    silentOscillatorRef.current = osc
+  }, [])
+
+  const stopSilentAudio = useCallback(() => {
+    if (silentOscillatorRef.current) {
+      silentOscillatorRef.current.stop()
+      silentOscillatorRef.current = null
     }
   }, [])
 
@@ -47,6 +73,10 @@ export default function RadioPage({ userId }: Props) {
   useEffect(() => {
     playStateRef.current = playState
   }, [playState])
+
+  useEffect(() => {
+    currentIndexRef.current = currentIndex
+  }, [currentIndex])
 
   const cleanText = (text: string) => {
     return text.replace(/\s*\[\d+(?:,\s*\d+)*\]\s*/g, '').trim()
@@ -73,10 +103,10 @@ export default function RadioPage({ userId }: Props) {
     })
   }
 
-  const playSequence = useCallback(async (targetPhrases: Phrase[]) => {
+  const playSequence = useCallback(async (targetPhrases: Phrase[], startIndex: number = 0) => {
     cancelRef.current = false
 
-    for (let i = 0; i < targetPhrases.length; i++) {
+    for (let i = startIndex; i < targetPhrases.length; i++) {
       if (cancelRef.current) break
 
       const p = targetPhrases[i]
@@ -97,6 +127,7 @@ export default function RadioPage({ userId }: Props) {
       try {
         setCurrentStep('en1')
         await speak(phrase, 'en-US', speed, `🔊 ${phrase}`)
+        if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing'
         await delay(500)
 
         if (cancelRef.current) break
@@ -117,46 +148,69 @@ export default function RadioPage({ userId }: Props) {
     }
 
     setPlayState('idle')
-    if (silentAudioRef.current) silentAudioRef.current.pause()
+    stopSilentAudio()
     setCurrentPhraseId(null)
     setDisplayPhrase('')
     setDisplayMeaning('')
-  }, [speak, prefetch, speed])
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'none'
+  }, [speak, prefetch, speed, stopSilentAudio])
 
-  const handlePlay = () => {
+  const handlePlay = useCallback(() => {
     init()
+    initSilentAudio()
 
     if (playState === 'playing') {
-      if (silentAudioRef.current) silentAudioRef.current.pause()
       setPlayState('paused')
+      stop()
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'paused'
       return
     }
     if (playState === 'paused') {
-      if (silentAudioRef.current) silentAudioRef.current.play().catch(() => {})
+      const target = phrases.slice(0, limit)
       setPlayState('playing')
+      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing'
+      playSequence(target, currentIndexRef.current)
       return
     }
 
     const target = phrases.slice(0, limit)
     if (target.length === 0) return
 
-    if (silentAudioRef.current) {
-      silentAudioRef.current.play().catch(() => {})
-    }
-
     setPlayState('playing')
     setCurrentIndex(0)
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'playing'
     playSequence(target)
-  }
+  }, [init, initSilentAudio, playState, phrases, limit, playSequence, stop])
 
-  const handleStop = () => {
+  const handleStop = useCallback(() => {
     cancelRef.current = true
-    if (silentAudioRef.current) silentAudioRef.current.pause()
+    stop()
+    stopSilentAudio()
     setPlayState('idle')
     setCurrentPhraseId(null)
     setDisplayPhrase('')
     setDisplayMeaning('')
-  }
+    if ('mediaSession' in navigator) navigator.mediaSession.playbackState = 'none'
+  }, [stop, stopSilentAudio])
+
+  // Media Session Control
+  useEffect(() => {
+    if ('mediaSession' in navigator && playState !== 'idle') {
+      navigator.mediaSession.setActionHandler('play', handlePlay)
+      navigator.mediaSession.setActionHandler('pause', handlePlay) // Toggles in handlePlay
+      navigator.mediaSession.setActionHandler('stop', handleStop)
+      navigator.mediaSession.setActionHandler('nexttrack', () => {
+         // Potential future feature: skip to next phrase
+      })
+    }
+    return () => {
+      if ('mediaSession' in navigator) {
+        navigator.mediaSession.setActionHandler('play', null)
+        navigator.mediaSession.setActionHandler('pause', null)
+        navigator.mediaSession.setActionHandler('stop', null)
+      }
+    }
+  }, [playState, handlePlay, handleStop])
 
   const handleQuickCheck = async (id: string) => {
     await markAsLearned(id)
@@ -254,7 +308,7 @@ export default function RadioPage({ userId }: Props) {
                   <div className="list-card-meaning">{p.meaning}</div>
                 </div>
                 <div className="list-card-actions">
-                  <button className="icon-btn" onClick={() => { init(); speak(p.phrase, 'en-US', speed); }}>🔊</button>
+                  <button className="icon-btn" onClick={() => { init(); initSilentAudio(); speak(p.phrase, 'en-US', speed); }}>🔊</button>
                   <button className="icon-btn check" onClick={() => markAsLearned(p.id)}>✅</button>
                 </div>
               </div>
@@ -263,15 +317,14 @@ export default function RadioPage({ userId }: Props) {
         </div>
       )}
 
-      {/* Debug Section */}
+      {/* Debug Info */}
       <div className="debug-dashboard">
         <h3 className="debug-title">⚙️ Free Mode (Google TTS)</h3>
         <div className="debug-grid">
           <div className="debug-item"><span>Status:</span> <strong className={`status-${status}`}>{status.toUpperCase()}</strong></div>
           {errorDetail && <div className="debug-error">Error: {errorDetail}</div>}
         </div>
-        <p className="debug-hint">💡 現在完全無料モードで動作しています。APIキーは不要です。</p>
-        <p className="debug-hint">💡 音が聞こえない場合は <b>「iPhone横のミュートスイッチ」</b> を確認してください。</p>
+        <p className="debug-hint">💡 バックグラウンド維持機能を強化しました (Oscillator + MediaSession)。</p>
       </div>
     </div>
   )

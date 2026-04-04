@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 
-// --- IndexedDB Cache Helper ---
-// 無料版でも、何度も同じ通信をしないようにキャッシュは残しておきます。
+// --- IndexedDB Cache Helper (Free Mode) ---
 const DB_NAME = 'EnglishAppAudioCacheFree'
 const STORE_NAME = 'audio_blobs'
 
@@ -60,7 +59,7 @@ export function useSpeech() {
       audioInstanceRef.current.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA'
       audioInstanceRef.current.play().then(() => {
         audioInstanceRef.current?.pause()
-        console.log('Free Audio Engine Initialized')
+        console.log('Audio Engine Primed')
       }).catch(e => {
         console.warn('Audio init failed:', e)
         setErrorDetail('Init Error: ' + e.message)
@@ -69,7 +68,7 @@ export function useSpeech() {
   }, [])
 
   const fetchAudioBlob = async (text: string, lang: string): Promise<Blob | null> => {
-    const langCode = lang.split('-')[0] // en-US -> en, ja-JP -> ja
+    const langCode = lang.split('-')[0]
     const cacheKey = `g_tts_${langCode}_${text}`
     
     const cached = await dbGet(cacheKey)
@@ -77,9 +76,7 @@ export function useSpeech() {
 
     try {
       setStatus('fetching')
-      // Google TTS 非公式APIエンドポイント
       const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${langCode}&client=tw-ob`
-      
       const response = await fetch(url)
       if (!response.ok) throw new Error('Google TTS Failed')
       
@@ -88,7 +85,6 @@ export function useSpeech() {
       return blob
     } catch (e: any) {
       console.error('Google Audio fetch failed:', e)
-      // fetchがCORS等で失敗した場合はnullを返し、speak側で直接URLを指定する
       return null
     }
   }
@@ -104,27 +100,24 @@ export function useSpeech() {
     const langCode = lang.split('-')[0]
     let url: string
     
-    // キャッシュを試みる
     const blob = await fetchAudioBlob(text, lang)
     if (blob) {
       url = URL.createObjectURL(blob)
     } else {
-      // Fetchが失敗（CORSなど）した場合は、直接GoogleのURLをsrcに入れる
-      // これにより、キャッシュは効かないが再生は可能になる
       url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=${langCode}&client=tw-ob`
     }
 
     if ('mediaSession' in navigator) {
       navigator.mediaSession.metadata = new MediaMetadata({
         title: title || text,
-        artist: 'English YouTube Phrase App (Free Mode)',
+        artist: 'English YouTube Phrase App',
         album: lang.startsWith('en') ? 'English' : 'Japanese',
       })
     }
 
     const audio = audioInstanceRef.current
     audio.src = url
-    audio.playbackRate = speed // 再生速度の設定
+    audio.playbackRate = speed
 
     return new Promise((resolve) => {
       audio.onended = () => {
@@ -148,5 +141,12 @@ export function useSpeech() {
     })
   }, [])
 
-  return { speak, prefetch, init, status, errorDetail, voicesReady: true }
+  const stop = useCallback(() => {
+    if (audioInstanceRef.current) {
+      audioInstanceRef.current.pause()
+      setStatus('idle')
+    }
+  }, [])
+
+  return { speak, prefetch, init, stop, status, errorDetail, voicesReady: true }
 }
