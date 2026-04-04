@@ -11,7 +11,7 @@ type PlayState = 'idle' | 'playing' | 'paused'
 
 export default function RadioPage({ userId }: Props) {
   const { phrases, loading, fetchUnlearned, markAsLearned } = usePhrases(userId)
-  const { speak, prefetch } = useSpeech()
+  const { speak, prefetch, init, status } = useSpeech()
   
   const [mode, setMode] = useState<'radio' | 'list'>('radio')
   const [speed, setSpeed] = useState(1.0)
@@ -27,9 +27,9 @@ export default function RadioPage({ userId }: Props) {
   const cancelRef = useRef(false)
   const silentAudioRef = useRef<HTMLAudioElement | null>(null)
 
-  // Silent audio trick for iOS backgrounding
+  // Silent audio (1 sec silence) to keep iOS audio context alive
   useEffect(() => {
-    const silentSrc = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA'
+    const silentSrc = 'data:audio/mpeg;base64,SUQzBAAAAAABAFRYWFhYAAAADAAAY29udGVudAB0eXBlAGF1ZGlvL21wZWdB/++MYxAAAAANIAAAAAExBTUUzLjk4LjIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/+MYxQAAP8AAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/+MYxQsAP8AAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/+MYxRMAP8AAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD/'
     const audio = new Audio(silentSrc)
     audio.loop = true
     silentAudioRef.current = audio
@@ -128,6 +128,9 @@ export default function RadioPage({ userId }: Props) {
   }, [speak, prefetch, speed])
 
   const handlePlay = () => {
+    // CRITICAL: Initialize audio on user gesture
+    init()
+
     if (playState === 'playing') {
       if (silentAudioRef.current) silentAudioRef.current.pause()
       setPlayState('paused')
@@ -265,10 +268,13 @@ export default function RadioPage({ userId }: Props) {
                 </div>
                 <div className="radio-counter">
                   {currentIndex + 1} / {targetCount}
-                  {' — '}
-                  {currentStep === 'en1' && '🔊 English (1st)'}
-                  {currentStep === 'en2' && '🔊 English (2nd)'}
-                  {currentStep === 'ja' && '🇯🇵 Japanese'}
+                  {status !== 'idle' && (
+                    <span className={`status-tag status-${status}`}>
+                      {status === 'fetching' && '⏳ Fetching'}
+                      {status === 'playing' && '🔊 Playing'}
+                      {status === 'error' && '❌ API Error'}
+                    </span>
+                  )}
                 </div>
               </div>
             )}
@@ -303,6 +309,9 @@ export default function RadioPage({ userId }: Props) {
                 onChange={(e) => setSpeed(Number(e.target.value))}
               />
             </div>
+            {status === 'error' && (
+              <div className="status-error-msg">⚠️ OpenAI API Key が設定されていないか、エラーが発生しました。</div>
+            )}
           </div>
           <div className="list-container">
             {phrases.map((p) => (
@@ -312,7 +321,7 @@ export default function RadioPage({ userId }: Props) {
                   <div className="list-card-meaning">{p.meaning}</div>
                 </div>
                 <div className="list-card-actions">
-                  <button className="icon-btn" onClick={() => speak(p.phrase, 'en-US', speed)}>
+                  <button className="icon-btn" onClick={() => { init(); speak(p.phrase, 'en-US', speed); }}>
                     🔊
                   </button>
                   <button className="icon-btn check" onClick={() => markAsLearned(p.id)}>
@@ -327,4 +336,3 @@ export default function RadioPage({ userId }: Props) {
     </div>
   )
 }
-

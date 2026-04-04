@@ -34,31 +34,53 @@ const dbSet = async (key: string, blob: Blob): Promise<void> => {
   })
 }
 
+export type SpeechStatus = 'idle' | 'fetching' | 'playing' | 'error'
+
 export function useSpeech() {
-  const [voicesReady, setVoicesReady] = useState(false)
-  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const [status, setStatus] = useState<SpeechStatus>('idle')
+  
+  // Single audio instance for consistent authorization on iOS
+  const audioInstanceRef = useRef<HTMLAudioElement | null>(null)
+  
   const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY
 
   useEffect(() => {
-    setVoicesReady(!!OPENAI_API_KEY)
+    // Create a single audio instance once
+    if (!audioInstanceRef.current) {
+      audioInstanceRef.current = new Audio()
+    }
+
     return () => {
-      if (audioRef.current) {
-        audioRef.current.pause()
-        audioRef.current = null
+      if (audioInstanceRef.current) {
+        audioInstanceRef.current.pause()
+        audioInstanceRef.current = null
       }
     }
-  }, [OPENAI_API_KEY])
+  }, [])
+
+  // Call this function inside a User Click event handler
+  const init = useCallback(() => {
+    if (audioInstanceRef.current) {
+      // Play a short silent blip to "unmute" the element on iOS
+      audioInstanceRef.current.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA'
+      audioInstanceRef.current.play().then(() => {
+        audioInstanceRef.current?.pause()
+      }).catch(e => console.warn('Audio init failed:', e))
+    }
+  }, [])
 
   const fetchAudioBlob = async (text: string, speed: number, lang: string): Promise<Blob | null> => {
-    if (!OPENAI_API_KEY) return null
+    if (!OPENAI_API_KEY) {
+      setStatus('error')
+      return null
+    }
     const cacheKey = `tts_${lang}_${speed}_${text}`
     
-    // Check Cache first
     const cached = await dbGet(cacheKey)
     if (cached) return cached
 
-    // Fetch from OpenAI
     try {
+      setStatus('fetching')
       const response = await fetch('https://api.openai.com/v1/audio/speech', {
         method: 'POST',
         headers: {
@@ -68,18 +90,17 @@ export function useSpeech() {
         body: JSON.stringify({
           model: 'tts-1',
           input: text,
-          voice: lang.startsWith('en') ? 'alloy' : 'nova', // alloy for EN, nova for JA (more natural)
+          voice: lang.startsWith('en') ? 'alloy' : 'nova',
           speed: speed,
         }),
       })
       if (!response.ok) throw new Error('OpenAI API Error')
       const blob = await response.blob()
-      
-      // Save to Cache
       await dbSet(cacheKey, blob)
       return blob
     } catch (e) {
       console.error('Audio fetch failed:', e)
+      setStatus('error')
       return null
     }
   }
@@ -89,36 +110,56 @@ export function useSpeech() {
   }, [OPENAI_API_KEY])
 
   const speak = useCallback(async (text: string, lang: string, speed: number = 1.0, title?: string): Promise<void> => {
-    const blob = await fetchAudioBlob(text, speed, lang)
-    if (!blob) return
+    if (!audioInstanceRef.current) return
 
-    // Setup Media Session (Lock Screen)
+    // Important for iOS: 
+    // We already "primed" audioInstanceRef in init(), 
+    // but the following fetch is async. 
+    // Usually even with async it works IF we stay on the same element.
+    
+    setStatus('fetching')
+    const blob = await fetchAudioBlob(text, speed, lang)
+    if (!blob) {
+      setStatus('error')
+      return
+    }
+
     if ('mediaSession' in navigator) {
       navigator.mediaSession.metadata = new MediaMetadata({
         title: title || text,
         artist: 'English YouTube Phrase App',
-        album: lang.startsWith('en') ? 'English Pronunciation' : 'Japanese Translation',
+        album: lang.startsWith('en') ? 'English' : 'Japanese',
       })
     }
 
-    if (audioRef.current) {
-      audioRef.current.pause()
-    }
-
     const url = URL.createObjectURL(blob)
-    const audio = new Audio(url)
-    audioRef.current = audio
+    const audio = audioInstanceRef.current
+    audio.src = url
+    setStatus('playing')
 
     return new Promise((resolve) => {
-      audio.onended = () => {
+      const handleEnd = () => {
         URL.revokeObjectURL(url)
+        setStatus('idle')
         resolve()
       }
-      audio.onerror = () => resolve()
-      audio.play().catch(() => resolve())
+      const handleError = () => {
+        setStatus('error')
+        resolve()
+      }
+      
+      audio.onended = handleEnd
+      audio.onerror = handleError
+      audio.onplay = () => setStatus('playing')
+      
+      audio.play().catch((e) => {
+        console.error('Playback block:', e)
+        setStatus('error')
+        resolve()
+      })
     })
   }, [OPENAI_API_KEY])
 
-  return { speak, prefetch, voicesReady }
+  return { speak, prefetch, init, status, voicesReady: !!OPENAI_API_KEY }
 }
 
